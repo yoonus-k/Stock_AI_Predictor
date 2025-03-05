@@ -7,9 +7,10 @@ from pyclustering.cluster.silhouette import silhouette_ksearch_type, silhouette_
 from pyclustering.cluster.kmeans import kmeans
 from pyclustering.cluster.center_initializer import kmeans_plusplus_initializer
 from perceptually_important import find_pips
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 
-class PIPPatternMiner:
+class Pattern_Miner:
 
     def __init__(self, n_pips: int, lookback: int, hold_period: int):
         self._n_pips = n_pips
@@ -53,7 +54,7 @@ class PIPPatternMiner:
             pat_i = self._unique_pip_indices[self._pip_clusters[cluster_i][i]]
             data_slice = candle_data.iloc[pat_i - self._lookback + 1: pat_i + 1]
             idx = data_slice.index
-            plot_pip_x, plot_pip_y = find_pips(data_slice['close'].to_numpy(), self._n_pips, 3)
+            plot_pip_x, plot_pip_y = find_pips(data_slice['Close'].to_numpy(), self._n_pips, 3)
             
             pip_lines = []
             colors = []
@@ -99,26 +100,6 @@ class PIPPatternMiner:
         self._returns = pd.Series(arr).diff().shift(-1)
         self._find_unique_patterns()
         
-        # print the _unique_pip_patterns
-        #print(self._unique_pip_patterns)
-        
-        # Convert to a NumPy array
-        data_array = np.array(self._unique_pip_patterns)
-
-        
-        # Plot each pattern on the same chart
-        plt.figure(figsize=(10, 6))
-        for i, pattern in enumerate(data_array):
-            plt.plot(pattern, label=f'Pattern {i+1}', marker='o' if i == 0 else 'x')  # Use different markers for each pattern
-
-        # Add labels, title, and legend
-        plt.xlabel('Time Steps')
-        plt.ylabel('Value')
-        plt.title('Plot of Unique Pip Patterns')
-        plt.legend()
-        plt.grid()
-        plt.show()
-        
 
         search_instance = silhouette_ksearch(
                 self._unique_pip_patterns, 5, 40, algorithm=silhouette_ksearch_type.KMEANS).process()
@@ -158,7 +139,6 @@ class PIPPatternMiner:
 
 
     def _find_unique_patterns(self):
-        # Find unique pip patterns in data
         self._unique_pip_indices.clear()
         self._unique_pip_patterns.clear()
         
@@ -167,7 +147,7 @@ class PIPPatternMiner:
             start_i = i - self._lookback + 1
             window = self._data[start_i: i + 1]
             pips_x, pips_y = find_pips(window, self._n_pips, 3)
-            pips_x = [j + start_i for j in pips_x] # Convert to global index
+            pips_x = [j + start_i for j in pips_x]  # Convert to global index
 
             # Check internal pips to see if it is the same as last
             same = True
@@ -177,9 +157,16 @@ class PIPPatternMiner:
                     break
             
             if not same:
-                # Z-Score normalize pattern
-                pips_y = list((np.array(pips_y) - np.mean(pips_y)) / np.std(pips_y))
-                self._unique_pip_patterns.append(pips_y)
+                data = np.array(pips_y).reshape(-1, 1)
+                # Create scalers
+                minmax_scaler = MinMaxScaler()
+                std_scaler = StandardScaler()
+                # Min-Max normalization to [0, 1]
+                # Fit and transform
+                normalized = minmax_scaler.fit_transform(data).flatten()
+                standardized = std_scaler.fit_transform(data).flatten()
+                
+                self._unique_pip_patterns.append(normalized.tolist())
                 self._unique_pip_indices.append(i)
 
             last_pips_x = pips_x
@@ -194,6 +181,58 @@ class PIPPatternMiner:
         # Extract clustering results: clusters and their centers
         self._pip_clusters = kmeans_instance.get_clusters()
         self._cluster_centers = kmeans_instance.get_centers()
+        
+        # print("Cluster Centers")
+        # print(self._cluster_centers)
+        # print("Cluster Patterns")
+        # print(self._pip_clusters)
+        
+        #self.plot_clusters()
+        #self.plot_cluster_members(0)
+        
+        
+        
+    def plot_clusters(self):
+        # plot the cluster centers
+        plt.figure(figsize=(10, 6))
+        for i, center in enumerate(self._cluster_centers):
+            plt.plot(center, label=f'Cluster {i+1}', marker='o' if i == 0 else 'x')
+        plt.xlabel('Time Steps')
+        plt.ylabel('Value')
+        plt.title('Plot of Cluster Centers')
+        plt.legend()
+        plt.grid()
+        plt.show()
+        
+    # funtion to print a cluster by its index
+    def plot_cluster_by_index(self, index, type):
+        
+        plt.plot(self._cluster_centers[index], label=f'Pattern {index+1}', marker='o' if index == 0 else 'x')
+        plt.xlabel('Time Steps')
+        plt.ylabel('Value')
+        
+        if type == 'buy':
+            plt.title(f'Plot of Cluster {index} Buy')
+        else:
+            plt.title(f'Plot of Cluster {index} Sell')
+            
+        plt.legend()
+        plt.grid()
+        plt.show()
+        
+    def plot_cluster_members(self, cluster_i):
+        # plot each member of the cluster number 1
+        #print("Cluster Members")
+        #print(self._pip_clusters)
+        for i in self._pip_clusters[cluster_i]:
+            
+            plt.plot(self._unique_pip_patterns[i], label=f'Pattern {i+1}', marker='o' if i == 0 else 'x')
+        plt.xlabel('Time Steps')
+        plt.ylabel('Value')
+        plt.title('Plot of Cluster 1 Members')
+        plt.legend()
+        plt.grid()
+        plt.show()
 
     def _get_martin(self, rets: np.array):
         rsum = np.sum(rets)
@@ -266,18 +305,98 @@ class PIPPatternMiner:
         martin = self._get_martin(rets)
         return martin
     
+    def evaluate_clusters(self):
+        cluster_metrics = []
+        for cluster_i in range(len(self._pip_clusters)):
+            cluster_indices = self._pip_clusters[cluster_i]
+            cluster_returns = []
+            
+            for idx in cluster_indices:
+                pattern_end = self._unique_pip_indices[idx]
+                future_return = self._returns[pattern_end: pattern_end + self._hold_period].sum()
+                cluster_returns.append(future_return)
+            
+            # Calculate metrics
+            avg_return = np.mean(cluster_returns)
+            win_rate = np.mean(np.array(cluster_returns) > 0) * 100
+            sharpe_ratio = np.mean(cluster_returns) / np.std(cluster_returns) if np.std(cluster_returns) != 0 else 0
+            max_drawdown = np.min(cluster_returns) - np.max(cluster_returns)
+            
+            cluster_metrics.append({
+                'cluster': cluster_i,
+                'avg_return': avg_return,
+                'win_rate': win_rate,
+                'sharpe_ratio': sharpe_ratio,
+                'max_drawdown': max_drawdown
+            })
+        
+        return cluster_metrics
+    
+    def filter_clusters(self, cluster_metrics, buy_threshold=0.03, sell_threshold=-0.03):
+        buy_clusters = []
+        sell_clusters = []
+        
+        for metrics in cluster_metrics:
+            # if the average return is positive and the win rate is above 50% then buy
+            if metrics['avg_return'] > buy_threshold and metrics['win_rate'] > 50:
+                buy_clusters.append(metrics['cluster'])
+            # if the average return is negative and the win rate is above 50% then sell
+            elif metrics['avg_return'] < sell_threshold and metrics['win_rate'] > 50:
+                sell_clusters.append(metrics['cluster'])
+        
+        return buy_clusters, sell_clusters
+    
+    def backtest(self, buy_clusters, sell_clusters):
+        signals = np.zeros(len(self._data))
+        for cluster_i in buy_clusters:
+            for idx in self._pip_clusters[cluster_i]:
+                pattern_end = self._unique_pip_indices[idx]
+                signals[pattern_end: pattern_end + self._hold_period] = 1  # Buy signal
+        
+        for cluster_i in sell_clusters:
+            for idx in self._pip_clusters[cluster_i]:
+                pattern_end = self._unique_pip_indices[idx]
+                signals[pattern_end: pattern_end + self._hold_period] = -1  # Sell signal
+        
+        # Calculate returns
+        strategy_returns = signals * self._returns
+        cumulative_returns = np.cumsum(strategy_returns)
+        
+        # Calculate performance metrics
+        #total_return = cumulative_returns[-1]
+        total_return = np.sum(strategy_returns)
+        sharpe_ratio = np.mean(strategy_returns) / np.std(strategy_returns) if np.std(strategy_returns) != 0 else 0
+        max_drawdown = np.min(cumulative_returns) - np.max(cumulative_returns)
+        
+        return {
+            'total_return': total_return,
+            'sharpe_ratio': sharpe_ratio,
+            'max_drawdown': max_drawdown,
+            'cumulative_returns': cumulative_returns
+            }
+        
+    def plot_backtest_results(self, cumulative_returns):
+        plt.figure(figsize=(10, 6))
+        plt.plot(cumulative_returns, label='Cumulative Returns')
+        plt.title('Backtest Results')
+        plt.xlabel('Time')
+        plt.ylabel('Cumulative Returns')
+        plt.legend()
+        plt.grid()
+        plt.show()
+    
 
     
 if __name__ == '__main__':
-    data = pd.read_csv('C:/Users/yoonus/Documents/GitHub/Stock_AI_Predictor/Lib/BTCUSDT3600.csv')
+    data = pd.read_csv('C:/Users/yoonus/Documents/GitHub/Stock_AI_Predictor/Mining_ML_Lib/BTCUSDT3600.csv')
     data['date'] = data['date'].astype('datetime64[s]')
     data = data.set_index('date')
     # trim the data to only include the first 50 data points
-    data = data.head(500)
+    data = data.head(1000)
     #data = np.log(data)
     
     # plot the price chart
-    plt.plot(data['close'], label='Close Price')
+    #plt.plot(data['close'], label='Close Price')
     
     #data = data[data.index < '01-01-2020']
     arr = data['close'].to_numpy()
@@ -291,16 +410,41 @@ if __name__ == '__main__':
 
     # get the indecies of the dataframe corresponding to the pips_x
     indeces = data.index[pips_x]
-    # Overlay the specific points
-    plt.plot(indeces , data['close'].loc[indeces], 'ro', label='Selected Points')
-
-       
-   
+  
     
-    
-    
-    pip_miner = PIPPatternMiner(n_pips=5, lookback=24, hold_period=6)
+    pip_miner = Pattern_Miner(n_pips=5, lookback=24, hold_period=6)
     pip_miner.train(arr, n_reps=-1)
+    
+    
+    # Evaluate clusters
+    cluster_metrics = pip_miner.evaluate_clusters()
+   
+    # print the cluster metrics in formatteed form
+    # for cluster in cluster_metrics:
+    #     print(f"Cluster {cluster['cluster']}:")
+    #     print(f"Average Return: {cluster['avg_return']:.4f}")
+    #     print(f"Win Rate: {cluster['win_rate']:.2f}%")
+    #     print(f"Sharpe Ratio: {cluster['sharpe_ratio']:.4f}")
+    #     print(f"Max Drawdown: {cluster['max_drawdown']:.4f}")
+    #     print()
+
+    # Filter clusters
+    buy_clusters, sell_clusters = pip_miner.filter_clusters(cluster_metrics)
+    print("Buy Clusters:", buy_clusters)
+    print("Sell Clusters:", sell_clusters)
+    
+    # plot the buy and sell clusters
+    # for cluster in buy_clusters:
+    #     pip_miner.plot_cluster_by_index(cluster, 'buy')
+    # for cluster in sell_clusters:
+    #     pip_miner.plot_cluster_by_index(cluster, 'sell')
+
+    # Backtest
+    backtest_results = pip_miner.backtest(buy_clusters, sell_clusters)
+
+    # Plot results
+    pip_miner.plot_backtest_results(backtest_results['cumulative_returns'])
+   
 
     
     # Monte Carlo test, takes about an hour..

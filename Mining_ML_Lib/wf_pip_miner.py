@@ -2,8 +2,8 @@ import pandas as pd
 import numpy as np
 import math
 import matplotlib.pyplot as plt
-from pip_pattern_miner import PIPPatternMiner
-from perceptually_important import find_pips
+from Mining_ML_Lib.pip_miner.pattern_miner import PIPPatternMiner
+from Mining_ML_Lib.pip_miner.perceptually_important import find_pips
 
 
 class WFPIPMiner:

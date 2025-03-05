@@ -1,0 +1,46 @@
+- .gitattributes
+- classifier.ipynb
+- cli.py
+- Data
+  - BTCUSDT3600.csv
+  - BTCUSDT86400.csv
+  - data.db
+  - GBPJPY60.csv
+  - XAUUSD60.csv
+- db.ipynb
+- engine.ipynb
+- images
+  - clusters.png
+  - cluster_1.png
+  - cluster_2.png
+  - cluster_3.png
+  - Figure_2.png
+  - returns.png
+- LICENSE
+- main.ipynb
+- Mining_ML_Lib
+  - pip_miner
+    - pattern_miner.py
+    - perceptually_important.py
+    - __init__.py
+    - __pycache__
+      - perceptually_important.cpython-312.pyc
+  - wf_pip_miner.py
+  - __init__.py
+  - __pycache__
+    - perceptually_important.cpython-312.pyc
+    - pip_pattern_miner.cpython-312.pyc
+    - rolling_window.cpython-312.pyc
+    - __init__.cpython-312.pyc
+- Pattern
+  - pattern.ipynb
+  - perceptually_important.py
+  - pip_pattern_miner.py
+  - __pycache__
+    - perceptually_important.cpython-312.pyc
+    - pip_pattern_miner.cpython-312.pyc
+- README.md
+- scaling.py
+- Sentiment
+  - SVM.ipynb
+- yfinance.ipynb
