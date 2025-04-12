@@ -11,8 +11,10 @@ main_dir = str(current_dir.parent)  # If notebook is inside 'main'
 # OR if notebook is outside 'main':
 # main_dir = str(current_dir / "main")  # Assumes 'main' is a subfolder
 sys.path.append(main_dir)
-import sqlite3 as db
 import pandas as pd
+import sqlitecloud
+# get the sqlite url from the .env file
+from dotenv import load_dotenv
 
 companies = {
     1: "GOLD (XAUUSD)",
@@ -24,20 +26,19 @@ companies = {
 
 
 class Database:
-    def __init__(self, db_name='Data/data.db'):
-        self.db_name = db_name
+    def __init__(self):
+        load_dotenv()
+        self.sqlitecloud_url = os.getenv('SQLITECLOUD_URL')
         self.connection = None
         self.cursor = None
         self.connect()
-     
 
     def connect(self):
         """Connect to the SQLite database."""
-        self.connection = db.connect(self.db_name)
+        self.connection = sqlitecloud.connect(self.sqlitecloud_url)
         self.cursor = self.connection.cursor()
-        print(f"Connected to offline sqlite database")
+        print(f"Connected to sqlite cloud database")
 
-   
     def close(self):
         """Close the database connection."""
         if self.connection:
@@ -316,7 +317,6 @@ if __name__ == '__main__':
     df= db.get_cluster_probability_score(1,0)
     print(df)
     db.close()
-
 
 
 
