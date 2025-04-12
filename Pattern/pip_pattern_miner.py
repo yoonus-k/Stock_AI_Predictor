@@ -111,36 +111,6 @@ class Pattern_Miner:
     def get_permutation_martins(self):
         return self._perm_martins
 
-    def plot_cluster_examples(self, candle_data: pd.DataFrame, cluster_i: int, grid_size: int = 5):
-        plt.style.use('dark_background')
-        fig, axs = plt.subplots(grid_size, grid_size)
-        flat_axs = axs.flatten()
-        for i in range(len(flat_axs)):
-            if i >= len(self._pip_clusters[cluster_i]):
-                break
-            
-            pat_i = self._unique_pip_indices[self._pip_clusters[cluster_i][i]]
-            data_slice = candle_data.iloc[pat_i - self._lookback + 1: pat_i + 1]
-            idx = data_slice.index
-            plot_pip_x, plot_pip_y = self.find_pips(data_slice['Close'].to_numpy(), self._n_pips, 3)
-            
-            pip_lines = []
-            colors = []
-            for line_i in range(self._n_pips - 1):
-                l0 = [(idx[plot_pip_x[line_i]], plot_pip_y[line_i]), (idx[plot_pip_x[line_i + 1]], plot_pip_y[line_i + 1])]
-                pip_lines.append(l0)
-                colors.append('w')
-
-            mpf.plot(data_slice, type='candle',alines=dict(alines=pip_lines, colors=colors), ax=flat_axs[i], style='charles', update_width_config=dict(candle_linewidth=1.75) )
-            flat_axs[i].set_yticklabels([])
-            flat_axs[i].set_xticklabels([])
-            flat_axs[i].set_xticks([])
-            flat_axs[i].set_yticks([])
-            flat_axs[i].set_ylabel("")
-
-        fig.suptitle(f"Cluster {cluster_i}", fontsize=32)
-        plt.show()
-
 
     def predict(self, pips_y: list, current_price: float):
         norm_y = (np.array(pips_y) - np.mean(pips_y)) / np.std(pips_y)
@@ -162,6 +132,7 @@ class Pattern_Miner:
         return predicted_price
     
     ##-------------- Functions to calculate the returns of each candle stick in the data --------------##
+    ## ---------------------------------------------------------------------------------- ##
     # Fixed Holding Period Returns
     def calculate_returns_fixed_hold(self,data: np.array, pattern_indices: list, hold_period: int) -> np.array:
         returns = []
@@ -169,7 +140,7 @@ class Pattern_Miner:
             if idx + hold_period < len(data):
                 returns.append((data[idx + hold_period] - data[idx]) / data[idx])
             else:
-                returns.append(np.nan)  # Not enough future data
+                returns.append(0)  # Not enough future data
         return np.array(returns)
     
     # Maximum Favorable Excursion (MFE) / Maximum Adverse Excursion (MAE)
@@ -186,11 +157,11 @@ class Pattern_Miner:
                 mfe.append((max_price - data[idx]) / data[idx]) # This will return the maximum favorable excursion
                 mae.append((min_price - data[idx]) / data[idx]) # This will return the maximum adverse excursion
             else:
-                mfe.append(np.nan)
-                mae.append(np.nan)
+                mfe.append(0)
+                mae.append(0)
         return np.array(mfe), np.array(mae)
     
-    def train(self, arr: np.array, n_reps=-1):
+    def train(self, arr: np.array):
         self._data = arr
         
         self._find_unique_patterns()
@@ -206,13 +177,8 @@ class Pattern_Miner:
         
         amount = search_instance.get_amount()
         self._kmeans_cluster_patterns(amount)
-
-        self._get_cluster_signals()
         self._categorize_clusters_by_mean_return()
-        self._fit_martin = self._get_total_performance()
         
-        print(self._fit_martin)
-
 
     def _find_unique_patterns(self):
         self._unique_pip_indices.clear()
@@ -260,6 +226,145 @@ class Pattern_Miner:
         self._pip_clusters = kmeans_instance.get_clusters()
         self._cluster_centers = kmeans_instance.get_centers()
         
+
+    def _get_martin(self, rets: np.array):
+        rsum = np.sum(rets)
+        short = False
+        if rsum < 0.0:
+            rets *= -1
+            rsum *= -1
+            short = True
+
+        csum = np.cumsum(rets)
+        eq = pd.Series(np.exp(csum))
+        sumsq = np.sum( ((eq / eq.cummax()) - 1) ** 2.0 )
+        ulcer_index = (sumsq / len(rets)) ** 0.5
+        martin = rsum / ulcer_index
+        if short:
+            martin = -martin
+
+        return martin
+
+    def _categorize_clusters_by_mean_return(self):
+        self._cluster_returns.clear()  # Clear previous returns
+        """Categorizes clusters into long, short, and neutral based on mean returns.
+        
+        Long clusters: mean return > 0
+        Short clusters: mean return < 0
+        Neutral clusters: mean return == 0
+        """
+        self._selected_long = []  # Clear previous selections
+        self._selected_short = []
+        self._selected_neutral = []  # New: Stores neutral clusters
+        
+        for clust_i, clust in enumerate(self._pip_clusters):
+            # Get returns for all patterns in this cluster
+            returns = self._returns_fixed_hold[clust]
+            mfe = self._returns_mfe[clust]
+            mae = self._returns_mae[clust]
+            mean_return = np.mean(returns)
+            mean_mfe = np.mean(mfe)
+            mean_mae = np.mean(mae)
+            
+            # store the cluster returns
+            self._cluster_returns.append(mean_return)
+            self._cluster_mfe.append(mean_mfe)
+            self._cluster_mae.append(mean_mae)
+            
+            if mean_return > 0:
+                self._selected_long.append(clust_i)
+            elif mean_return < 0:
+                self._selected_short.append(clust_i)
+            else:
+                self._selected_neutral.append(clust_i)
+        
+        
+    def filter_clusters(self,buy_threshold=0.03, sell_threshold=-0.03):
+        buy_clusters = []
+        sell_clusters = []
+        
+        # filter the long clusters
+        for clust_i in self._selected_long:
+            mean_return = np.mean(self._returns_fixed_hold[self._pip_clusters[clust_i]])
+            if mean_return > buy_threshold:
+                buy_clusters.append(clust_i)
+                
+        # filter the short clusters
+        for clust_i in self._selected_short:
+            mean_return = np.mean(self._returns_fixed_hold[self._pip_clusters[clust_i]])
+            if mean_return < sell_threshold:
+                sell_clusters.append(clust_i)
+        
+        return buy_clusters, sell_clusters
+
+    
+    def evaluate_clusters(self):
+        cluster_metrics = []
+        for cluster_i in range(len(self._pip_clusters)):
+            cluster_indices = self._pip_clusters[cluster_i]
+            cluster_returns = []
+            
+            for idx in cluster_indices:
+                pattern_end = self._unique_pip_indices[idx]
+                future_return = self._returns_next_candle[pattern_end: pattern_end + self._hold_period].sum()
+                cluster_returns.append(future_return)
+            
+            # Calculate metrics
+            avg_return = np.mean(cluster_returns)
+            win_rate = np.mean(np.array(cluster_returns) > 0) * 100
+            sharpe_ratio = np.mean(cluster_returns) / np.std(cluster_returns) if np.std(cluster_returns) != 0 else 0
+            max_drawdown = np.min(cluster_returns) - np.max(cluster_returns)
+            
+            cluster_metrics.append({
+                'cluster': cluster_i,
+                'avg_return': avg_return,
+                'win_rate': win_rate,
+                'sharpe_ratio': sharpe_ratio,
+                'max_drawdown': max_drawdown
+            })
+        
+        return cluster_metrics
+    
+    
+    def backtest(self, buy_clusters, sell_clusters):
+        signals = np.zeros(len(self._data))
+        for cluster_i in buy_clusters:
+            for idx in self._pip_clusters[cluster_i]:
+                pattern_end = self._unique_pip_indices[idx]
+                signals[pattern_end: pattern_end + self._hold_period] = 1  # Buy signal
+        
+        for cluster_i in sell_clusters:
+            for idx in self._pip_clusters[cluster_i]:
+                pattern_end = self._unique_pip_indices[idx]
+                signals[pattern_end: pattern_end + self._hold_period] = -1  # Sell signal
+        
+        # Calculate returns
+        strategy_returns = signals * self._returns_next_candle
+        cumulative_returns = np.cumsum(strategy_returns)
+        
+        # Calculate performance metrics
+        #total_return = cumulative_returns[-1]
+        total_return = np.sum(strategy_returns)
+        sharpe_ratio = np.mean(strategy_returns) / np.std(strategy_returns) if np.std(strategy_returns) != 0 else 0
+        max_drawdown = np.min(cumulative_returns) - np.max(cumulative_returns)
+        
+        return {
+            'total_return': total_return,
+            'sharpe_ratio': sharpe_ratio,
+            'max_drawdown': max_drawdown,
+            'cumulative_returns': cumulative_returns
+            }
+        
+    ### ------------- Plotting Functions ------------- ###
+    def plot_backtest_results(self, cumulative_returns):
+        plt.figure(figsize=(10, 6))
+        plt.plot(cumulative_returns, label='Cumulative Returns')
+        plt.title('Backtest Results')
+        plt.xlabel('Time')
+        plt.ylabel('Cumulative Returns')
+        plt.legend()
+        plt.grid()
+        plt.show()
     def plot_clusters(self):
         # plot the cluster centers
         plt.figure(figsize=(10, 6))
@@ -301,185 +406,37 @@ class Pattern_Miner:
         plt.legend()
         plt.grid()
         plt.show()
-
-    def _get_martin(self, rets: np.array):
-        rsum = np.sum(rets)
-        short = False
-        if rsum < 0.0:
-            rets *= -1
-            rsum *= -1
-            short = True
-
-        csum = np.cumsum(rets)
-        eq = pd.Series(np.exp(csum))
-        sumsq = np.sum( ((eq / eq.cummax()) - 1) ** 2.0 )
-        ulcer_index = (sumsq / len(rets)) ** 0.5
-        martin = rsum / ulcer_index
-        if short:
-            martin = -martin
-
-        return martin
-
-    # this funtion is to get the signals of the clusters from 0 or 1 , where 1 is the signal ( in the trade ) and 0 is no signal ( not in the trade )
-    def _get_cluster_signals(self):
-        self._cluster_signals.clear()
-
-        for clust in self._pip_clusters: # Loop through each cluster
-            signal = np.zeros(len(self._data))
-            for mem in clust: # Loop through each member in cluster
-                arr_i = self._unique_pip_indices[mem]
-                # Fill signal with 1s following pattern identification
-                # for hold period specified
-                signal[arr_i: arr_i + self._hold_period] = 1. 
+        
+    def plot_cluster_examples(self, candle_data: pd.DataFrame, cluster_i: int, grid_size: int = 5):
+        plt.style.use('dark_background')
+        fig, axs = plt.subplots(grid_size, grid_size)
+        flat_axs = axs.flatten()
+        for i in range(len(flat_axs)):
+            if i >= len(self._pip_clusters[cluster_i]):
+                break
             
-            self._cluster_signals.append(signal)
-
-    def _categorize_clusters_by_mean_return(self):
-        self._cluster_returns.clear()  # Clear previous returns
-        """Categorizes clusters into long, short, and neutral based on mean returns.
-        
-        Long clusters: mean return > 0
-        Short clusters: mean return < 0
-        Neutral clusters: mean return == 0
-        """
-        self._selected_long = []  # Clear previous selections
-        self._selected_short = []
-        self._selected_neutral = []  # New: Stores neutral clusters
-        
-        for clust_i, clust in enumerate(self._pip_clusters):
-            # Get returns for all patterns in this cluster
-            returns = self._returns_fixed_hold[clust]
-            mfe = self._returns_mfe[clust]
-            mae = self._returns_mae[clust]
-            mean_return = np.mean(returns)
-            mean_mfe = np.mean(mfe)
-            mean_mae = np.mean(mae)
+            pat_i = self._unique_pip_indices[self._pip_clusters[cluster_i][i]]
+            data_slice = candle_data.iloc[pat_i - self._lookback + 1: pat_i + 1]
+            idx = data_slice.index
+            plot_pip_x, plot_pip_y = self.find_pips(data_slice['Close'].to_numpy(), self._n_pips, 3)
             
-            # store the cluster returns
-            self._cluster_returns.append(mean_return)
-            self._cluster_mfe.append(mean_mfe)
-            self._cluster_mae.append(mean_mae)
-            
-            if mean_return > 0:
-                self._selected_long.append(clust_i)
-            elif mean_return < 0:
-                self._selected_short.append(clust_i)
-            else:
-                self._selected_neutral.append(clust_i)
-        
-        
-       
-        
-    def filter_clusters(self,buy_threshold=0.03, sell_threshold=-0.03):
-        buy_clusters = []
-        sell_clusters = []
-        
-        # filter the long clusters
-        for clust_i in self._selected_long:
-            mean_return = np.mean(self._returns_fixed_hold[self._pip_clusters[clust_i]])
-            if mean_return > buy_threshold:
-                buy_clusters.append(clust_i)
-                
-        # filter the short clusters
-        for clust_i in self._selected_short:
-            mean_return = np.mean(self._returns_fixed_hold[self._pip_clusters[clust_i]])
-            if mean_return < sell_threshold:
-                sell_clusters.append(clust_i)
-        
-        return buy_clusters, sell_clusters
+            pip_lines = []
+            colors = []
+            for line_i in range(self._n_pips - 1):
+                l0 = [(idx[plot_pip_x[line_i]], plot_pip_y[line_i]), (idx[plot_pip_x[line_i + 1]], plot_pip_y[line_i + 1])]
+                pip_lines.append(l0)
+                colors.append('w')
 
-    def _get_total_performance(self):
+            mpf.plot(data_slice, type='candle',alines=dict(alines=pip_lines, colors=colors), ax=flat_axs[i], style='charles', update_width_config=dict(candle_linewidth=1.75) )
+            flat_axs[i].set_yticklabels([])
+            flat_axs[i].set_xticklabels([])
+            flat_axs[i].set_xticks([])
+            flat_axs[i].set_yticks([])
+            flat_axs[i].set_ylabel("")
 
-        long_signal = np.zeros(len(self._data))
-        short_signal = np.zeros(len(self._data))
-
-        for clust_i in range(len(self._pip_clusters)):
-            if clust_i in self._selected_long:
-                long_signal += self._cluster_signals[clust_i]
-            elif clust_i in self._selected_short:
-                short_signal += self._cluster_signals[clust_i]
-        
-        long_signal /= len(self._selected_long)
-        short_signal /= len(self._selected_short)
-        short_signal *= -1
-
-        self._long_signal = long_signal
-        self._short_signal = short_signal
-        rets = (long_signal + short_signal) * self._returns_next_candle
-
-        martin = self._get_martin(rets)
-        return martin
-    
-    def evaluate_clusters(self):
-        cluster_metrics = []
-        for cluster_i in range(len(self._pip_clusters)):
-            cluster_indices = self._pip_clusters[cluster_i]
-            cluster_returns = []
-            
-            for idx in cluster_indices:
-                pattern_end = self._unique_pip_indices[idx]
-                future_return = self._returns_next_candle[pattern_end: pattern_end + self._hold_period].sum()
-                cluster_returns.append(future_return)
-            
-            # Calculate metrics
-            avg_return = np.mean(cluster_returns)
-            win_rate = np.mean(np.array(cluster_returns) > 0) * 100
-            sharpe_ratio = np.mean(cluster_returns) / np.std(cluster_returns) if np.std(cluster_returns) != 0 else 0
-            max_drawdown = np.min(cluster_returns) - np.max(cluster_returns)
-            
-            cluster_metrics.append({
-                'cluster': cluster_i,
-                'avg_return': avg_return,
-                'win_rate': win_rate,
-                'sharpe_ratio': sharpe_ratio,
-                'max_drawdown': max_drawdown
-            })
-        
-        return cluster_metrics
-    
-    
-    
-    def backtest(self, buy_clusters, sell_clusters):
-        signals = np.zeros(len(self._data))
-        for cluster_i in buy_clusters:
-            for idx in self._pip_clusters[cluster_i]:
-                pattern_end = self._unique_pip_indices[idx]
-                signals[pattern_end: pattern_end + self._hold_period] = 1  # Buy signal
-        
-        for cluster_i in sell_clusters:
-            for idx in self._pip_clusters[cluster_i]:
-                pattern_end = self._unique_pip_indices[idx]
-                signals[pattern_end: pattern_end + self._hold_period] = -1  # Sell signal
-        
-        # Calculate returns
-        strategy_returns = signals * self._returns_next_candle
-        cumulative_returns = np.cumsum(strategy_returns)
-        
-        # Calculate performance metrics
-        #total_return = cumulative_returns[-1]
-        total_return = np.sum(strategy_returns)
-        sharpe_ratio = np.mean(strategy_returns) / np.std(strategy_returns) if np.std(strategy_returns) != 0 else 0
-        max_drawdown = np.min(cumulative_returns) - np.max(cumulative_returns)
-        
-        return {
-            'total_return': total_return,
-            'sharpe_ratio': sharpe_ratio,
-            'max_drawdown': max_drawdown,
-            'cumulative_returns': cumulative_returns
-            }
-        
-    def plot_backtest_results(self, cumulative_returns):
-        plt.figure(figsize=(10, 6))
-        plt.plot(cumulative_returns, label='Cumulative Returns')
-        plt.title('Backtest Results')
-        plt.xlabel('Time')
-        plt.ylabel('Cumulative Returns')
-        plt.legend()
-        plt.grid()
+        fig.suptitle(f"Cluster {cluster_i}", fontsize=32)
         plt.show()
-    
 
-    
 if __name__ == '__main__':
     data = pd.read_csv('C:/Users/yoonus/Documents/GitHub/Stock_AI_Predictor/Data/BTCUSDT3600.csv')
     data['date'] = data['date'].astype('datetime64[s]')
