@@ -16,6 +16,15 @@ import pandas as pd
 import os
 from Pattern.pip_pattern_miner import Pattern_Miner
 
+companies = {
+    1: "GOLD (XAUUSD)",
+    2: "BTC (BTCUSD)",
+    3: "APPL (AAPL)",
+    4: "Amazon (AMZN)",
+    5: "NVIDIA (NVDA)",
+}
+
+
 class Database:
     def __init__(self, db_name='../Data/data.db'):
         self.db_name = db_name
@@ -62,17 +71,18 @@ class Database:
     ##### -------- Store Functions -------- #####      
     ##### -------------------------------- #####     
      # funtion to store the stock data in the database
-    def store_stock_data(self, stock_data, stock_ID, stock_symbol):
+    def store_stock_data(self, stock_data, stock_ID, stock_symbol,time_frame):
+        
         # insert the data into the table
         for i, (index, row) in enumerate(stock_data.iterrows(), start=0):
             time_Stamp = index.strftime('%Y-%m-%d %H:%M:%S')
             self.connection.execute('''
-                INSERT INTO stock_data (StockEntryID, StockID, StockSymbol, Timestamp, OpenPrice, ClosePrice, HighPrice, LowPrice, Volume)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ? )
-            ''', (i, stock_ID, stock_symbol, time_Stamp, row['Open'], row['Close'], row['High'], row['Low'], row['Volume'])) 
+                INSERT INTO stock_data (StockEntryID, StockID, StockSymbol, Timestamp,TimeFrame ,OpenPrice, ClosePrice, HighPrice, LowPrice, Volume)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (i, stock_ID, stock_symbol, time_Stamp, time_frame, row['Open'], row['Close'], row['High'], row['Low'], row['Volume'])) 
         # commit the changes
         self.connection.commit()
-        print(f"Stored stock data for {stock_ID} in database.")
+        print(f"Stored stock data for {stock_ID} TimeFrame: {time_frame} in database.")
         
      # funtion to store pattern data in the database
     def store_pattern_data(self,  stock_ID):
@@ -156,8 +166,6 @@ class Database:
             else:
                 cluster_label = 'Neutral'
                 
-            # inicialize the probability score with 50%
-            probability_score = 0.5
             # get the pattern count of the cluster
             pattern_count = len(self.pip_pattern_miner._pip_clusters[i])
             
@@ -173,14 +181,15 @@ class Database:
                 cluster_max_gain = 0
                 cluster_max_drawdown = 0
                 
-            
             # insert the data into the table
             self.connection.execute('''
-                INSERT INTO clusters (ClusterID, StockID, AVGPricePoints , MarketCondition , Outcome, Label , ProbabilityScore , Pattern_Count , MaxGain , MaxDrawdown)
-                VALUES (?, ?, ? , ?, ?, ?, ?, ? , ?, ?)
-            ''', (i,stock_ID, cluster_str , market_condition , cluster_ruturn , cluster_label , probability_score , pattern_count , cluster_max_gain , cluster_max_drawdown))
+                INSERT INTO clusters (ClusterID, StockID, AVGPricePoints , MarketCondition , Outcome, Label , Pattern_Count , MaxGain , MaxDrawdown)
+                VALUES (?, ?, ? , ?, ?, ?, ?, ? , ?)
+            ''', (i,stock_ID, cluster_str , market_condition , cluster_ruturn , cluster_label , pattern_count , cluster_max_gain , cluster_max_drawdown))
+           
         # commit the changes
         self.connection.commit()
+       
         
     #funtion to bind the pattern and cluster data , the patterns table contains a foreign key to the clusters table
     def bind_pattern_cluster(self, stock_ID):
@@ -209,10 +218,10 @@ class Database:
     ##### -------- Get Functions -------- #####  
     ##### -------------------------------- #####     
     # function to get the stock data from the database
-    def get_stock_data(self, stock_ID):
+    def get_stock_data(self, stock_ID , time_frame=60):
         # get the stock data from the database
         stock_data = pd.read_sql_query(f'''
-            SELECT * FROM stock_data WHERE StockID = {stock_ID}
+            SELECT * FROM stock_data WHERE StockID = {stock_ID} AND TimeFrame = '{time_frame}'
         ''', self.connection)
         # convert the timestamp to datetime
         stock_data['Timestamp'] = pd.to_datetime(stock_data['Timestamp'])
@@ -242,12 +251,64 @@ class Database:
         clusters['AVGPricePoints'] = clusters['AVGPricePoints'].apply(lambda x: [float(i) for i in x.split(',')])
         return clusters
 
+    # function to get to get the cluster probability score
+    def get_cluster_probability_score(self, cluster_id):
+       # calculate the probability score, the probability score is if the cluster is a buy or sell pattern ,
+        # then calculate tha total positive returns of it's pattern to the total returns of the patterns that belong to the cluster
+        # get the patterns that belong to the cluster
+        patterns = pd.read_sql_query(f'''
+            SELECT * FROM patterns WHERE ClusterID = {cluster_id}
+        ''', self.connection)
+        # get the total number positive returns of the patterns that belong to the cluster
+        total_positive_returns = len(patterns[patterns['Outcome'] > 0])
+        # get the total negative returns of the patterns that belong to the cluster
+        total_negative_returns = len(patterns[patterns['Outcome'] < 0])
+        # get the total number of patterns that belong to the cluster
+        total_patterns = len(patterns)
+        # get the cluster label
+        cluster_label = pd.read_sql_query(f'''
+            SELECT Label FROM clusters WHERE ClusterID = {cluster_id}
+        ''', self.connection)
+        if cluster_label.iloc[0]['Label'] == 'Buy':
+            # if the cluster is a buy pattern, then the probability score is the total positive returns of the patterns that belong to the cluster
+            # divided by the total returns of the patterns that belong to the cluster
+            probability_score = total_positive_returns / total_patterns
+        elif cluster_label.iloc[0]['Label'] == 'Sell':
+            # if the cluster is a sell pattern, then the probability score is the total negative returns of the patterns that belong to the cluster
+            # divided by the total returns of the patterns that belong to the cluster
+            probability_score = total_negative_returns / total_patterns
+        else:
+            # if the cluster is a neutral pattern, then the probability score is 0.5
+            probability_score = 0.5
+            
+        return probability_score
+
+    ##### -------- Update Functions -------- #####  
+    ##### -------------------------------- #####     
     
+    # function to update the cluster probability score
+    def update_cluster_probability_score_based_on_patterns(self, cluster_id):
+        probability_score = self.get_cluster_probability_score(cluster_id)
+        # update the cluster probability score
+        self.connection.execute('''
+            UPDATE clusters
+            SET ProbabilityScore = ?
+            WHERE ClusterID = ?
+        ''', (probability_score, cluster_id))
+        # commit the changes
+        self.connection.commit()
+        return probability_score
+    
+    # funtion to update all the cluster probability score
+    def update_all_cluster_probability_score(self):
+        # loop through all the clusters and update the cluster probability score
+        for i in range(len(self.pip_pattern_miner._cluster_centers)):
+            self.update_cluster_probability_score_based_on_patterns(i)
         
 # main function to create the database and tables
 if __name__ == '__main__':
     db = Database()
-    db.login('admin', '1234')
+    db.close()
 
 
 
