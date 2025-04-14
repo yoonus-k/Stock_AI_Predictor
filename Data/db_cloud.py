@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import numpy as np
 import bcrypt
+import json
 # Get the current working directory (where the notebook/script is running)
 current_dir = Path(os.getcwd())
 # Navigate to the 'main' folder (adjust if needed)
@@ -189,7 +190,51 @@ class Database:
         # commit the changes
         self.connection.commit()
        
+    # funtion to store the prediction data in the database
+    def store_prediction_data(self, stock_ID, pip_pattern_miner):
         
+        prediction_data = {
+            'date': '2023-05-15',
+            'stock_id': 'AAPL',
+            'stock_name': 'Apple Inc.',
+            'current_price': 172.57,
+            'pattern_prediction': 185.20,
+            'final_prediction': 183.50,
+            'confidence': 0.95,
+            'action': 'BUY',
+            'position_size': 0.15,
+            'pattern_metrics': {
+                'pattern_id': 42,
+                'type': 'Bullish Flag',
+                'probability': 0.87,
+                'max_gain': 0.12,
+                'max_drawdown': 0.05,
+                'reward_risk_ratio': 2.4
+            },
+            'sentiment_metrics': {
+                'score': 0.82,
+                'magnitude': 0.75
+            },
+            'hybrid_score': 0.89
+        }
+
+        self.connection.execute('''INSERT INTO Prediction (PatternID, SentimentID, PredictedOutcome)
+        VALUES (?, ?, ?)''', (123, 456, json.dumps(prediction_data)))
+                              
+        self.connection.commit()
+        
+    # funtion to store the notification data in the database
+    def store_notification_data(self, user_id, prediction_id, sent_time, notification_type, status):
+        # columns are : NotificationID UserID PredictionID SentTime NotificationType Status
+        # insert the data into the table
+        self.connection.execute('''
+            INSERT INTO Notifications (UserID, PredictionID, SentTime, NotificationType, Status)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (user_id, prediction_id, sent_time, notification_type, status))
+        # commit the changes
+        self.connection.commit()
+       
+       
     #funtion to bind the pattern and cluster data , the patterns table contains a foreign key to the clusters table
     def bind_pattern_cluster(self, stock_ID,pip_pattern_miner):
         # store these pattern in the database data.db and table patterns
@@ -288,6 +333,30 @@ class Database:
             probability_score = 0.5
             
         return probability_score
+    
+    # funtion to get the prediction data from the database
+    def get_prediction_data(self, stock_ID):
+        # get the prediction data from the database
+        prediction_data = self.connection.execute(f'''
+            SELECT * FROM Prediction WHERE StockID = {stock_ID}
+        ''').fetchall()
+        # convert the data to a pandas dataframe
+        prediction_data = pd.DataFrame(prediction_data, columns=['PredictionID','StockID' ,'PatternID', 'SentimentID','PredictionData' ,'PredictedOutcome' ,'ConfidenceLevel'])
+        # convert the prediction data to a dictionary
+        prediction_data['PredictionData'] = prediction_data['PredictionData'].apply(json.loads)
+        
+        return prediction_data
+    
+    # funtion to get the notification data from the database
+    def get_notification_data(self, user_id):
+        # get the notification data from the database
+        notification_data = self.connection.execute(f'''
+            SELECT * FROM Notifications WHERE UserID = {user_id}
+        ''').fetchall()
+        # convert the data to a pandas dataframe
+        notification_data = pd.DataFrame(notification_data, columns=['NotificationID', 'UserID', 'PredictionID', 'SentTime', 'NotificationType', 'Status'])
+        
+        return notification_data
 
     ##### -------- Update Functions -------- #####  
     ##### -------------------------------- #####     
@@ -314,7 +383,7 @@ class Database:
 # main function to create the database and tables
 if __name__ == '__main__':
     db = Database()
-    df= db.get_cluster_probability_score(1,0)
+    df= db.get_notification_data(1)
     print(df)
     db.close()
 

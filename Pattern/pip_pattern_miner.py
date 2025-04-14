@@ -438,84 +438,24 @@ class Pattern_Miner:
         plt.show()
 
 if __name__ == '__main__':
-    data = pd.read_csv('C:/Users/yoonus/Documents/GitHub/Stock_AI_Predictor/Data/BTCUSDT3600.csv')
-    data['date'] = data['date'].astype('datetime64[s]')
-    data = data.set_index('date')
+    data = pd.read_csv('C:/Users/yoonus/Documents/GitHub/Stock_AI_Predictor/Data/Stocks/BTCUSD60.csv')
+    data['Date'] = data['Date'].astype('datetime64[s]')
+    data = data.set_index('Date')
     # trim the data to only include the first 50 data points
-    data = data.head(100)
+    data = data.head(1000)
    
     #data = data[data.index < '01-01-2020']
-    arr = data['close'].to_numpy()
+    arr = data['Close'].to_numpy()
     
     pip_miner = Pattern_Miner(n_pips=5, lookback=24, hold_period=6)
-    pip_miner.train(arr, n_reps=-1)
+    pip_miner.train(arr)
     
     
-    # Evaluate clusters
-    cluster_metrics = pip_miner.evaluate_clusters()
+
    
-    # print the cluster metrics in formatteed form
-    # for cluster in cluster_metrics:
-    #     print(f"Cluster {cluster['cluster']}:")
-    #     print(f"Average Return: {cluster['avg_return']:.4f}")
-    #     print(f"Win Rate: {cluster['win_rate']:.2f}%")
-    #     print(f"Sharpe Ratio: {cluster['sharpe_ratio']:.4f}")
-    #     print(f"Max Drawdown: {cluster['max_drawdown']:.4f}")
-    #     print()
+    # plot the first cluster members
+    pip_miner.plot_cluster_members(0)
 
-    # Filter clusters
-    # buy_clusters, sell_clusters = pip_miner.filter_clusters(cluster_metrics)
-    # print("Buy Clusters:", buy_clusters)
-    # print("Sell Clusters:", sell_clusters)
-    
-    # plot the buy and sell clusters
-    # for cluster in buy_clusters:
-    #     pip_miner.plot_cluster_by_index(cluster, 'buy')
-    # for cluster in sell_clusters:
-    #     pip_miner.plot_cluster_by_index(cluster, 'sell')
-
-    # Backtest
-    # backtest_results = pip_miner.backtest(buy_clusters, sell_clusters)
-
-    # Plot results
-    # pip_miner.plot_backtest_results(backtest_results['cumulative_returns'])
-   
-   
-    # # plot the first pattern
-    # plt.plot(pip_miner._unique_pip_patterns[0], label='Pattern 1', marker='o')
-    # plt.xlabel('Time Steps')
-    # plt.ylabel('Value')
-    # plt.title('Plot of Pattern 1')
-    # plt.legend()
-    # plt.grid()
-    # plt.show()
-    
-    # # plot the first pattern with the original data using global indices
-    # # get the global indices of the pattern
-    # global_indices = pip_miner._global_pip_indices[0]
-   
-    # # Your plotting code with cursor functionality
-    # plt.plot(arr[0:40], label='Original Data', color='blue')
-    # plt.scatter(global_indices, arr[global_indices], label='Pattern Points', color='red')
-
-    # # Add labels and title
-    # plt.xlabel('Time Steps')
-    # plt.ylabel('Value')
-    # plt.title('Plot of Pattern 1 with Original Data (Hover for values)')
-    # plt.legend()
-    # plt.grid()
-
-    # # Enable cursor functionality
-    # cursor = mplcursors.cursor(hover=True)
-
-    # # Optional: Customize the displayed text
-    # @cursor.connect("add")
-    # def on_add(sel):
-    #     x, y = sel.target
-    #     sel.annotation.set(text=f"X: {x:.0f}\nY: {y:.4f}")
-    #     sel.annotation.get_bbox_patch().set(fc="white", alpha=0.8)
-
-    # plt.show()
 
     
   

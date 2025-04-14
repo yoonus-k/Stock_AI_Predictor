@@ -77,19 +77,8 @@ class EnhancedPredictionEngine:
         svm.fit(features, labels)
         self.model = svm
         
-    def calculate_hybrid_score(self, pattern_data, sentiment_data):
-        """Calculate weighted score combining pattern and sentiment"""
-        pattern_strength = self.sentiment_weights['pattern_vs_sentiment'] * (
-            pattern_data['probability'] * pattern_data['reward_risk_ratio']
-        ) # expected return 
-        
-        sentiment_strength = (1 - self.sentiment_weights['pattern_vs_sentiment']) * (
-            self.sentiment_weights['twitter'] * sentiment_data['twitter_score'] + 
-            self.sentiment_weights['news'] * sentiment_data['news_score']
-        )
-        
-        return pattern_strength + sentiment_strength
-    
+
+
     def apply_decision_matrix(self, pattern_label,pattern_confidence, sentiment_score):
             """Enhanced decision matrix combining pattern labels and sentiment"""
             # Updated thresholds
@@ -146,10 +135,10 @@ class EnhancedPredictionEngine:
         adjustment = current_price * sensitivity * sentiment_multiplier
         return pattern_pred + adjustment
     
-    def calculate_position_size(self, current_price, hybrid_score, max_drawdown):
+    def calculate_position_size(self, current_price, max_drawdown):
         """Dynamic position sizing based on confidence"""
         base_size = 1000  # USD
-        risk_adjusted_size = base_size * (1 + hybrid_score)
+        risk_adjusted_size = base_size 
         
         # Apply max drawdown cap (no more than 2% risk per trade)
         max_risk_size = current_price * 0.02 / abs(max_drawdown)
@@ -219,7 +208,7 @@ class EnhancedPredictionEngine:
         
         # Generate hybrid prediction
         # Combined analysis
-        hybrid_score = self.calculate_hybrid_score(pattern_data, sentiment_data)
+       
         final_price = self.sentiment_adjusted_prediction(
             predicted_price, current_price, sentiment_data
         )
@@ -229,7 +218,7 @@ class EnhancedPredictionEngine:
             sentiment_score=sentiment_data['impact_score'],
         )
         position_size = self.calculate_position_size(
-            current_price, hybrid_score, cluster_max_drawdown
+            current_price,  cluster_max_drawdown
         )
         
         # Compile results
@@ -252,7 +241,7 @@ class EnhancedPredictionEngine:
                 'reward_risk_ratio': reward_risk_ratio,
             },
             'sentiment_metrics': sentiment_data,
-            'hybrid_score': hybrid_score
+            
         }
     
     def get_news_sentiment(self, ticker, date):
@@ -282,9 +271,6 @@ class EnhancedPredictionEngine:
         Twitter Score: {prediction['sentiment_metrics']['twitter_score']:.2f}
         News Score: {prediction['sentiment_metrics']['news_score']:.2f}
         Impact Score: {prediction['sentiment_metrics']['impact_score']:.2f}
-
-        --- Hybrid Analysis ---
-        Hybrid Score: {prediction['hybrid_score']:.2f}
 
         --- Final Recommendation ---
         Predicted Price: ${prediction['final_prediction']:.2f}

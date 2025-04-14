@@ -1,12 +1,12 @@
 import argparse
 import sys
-from cli import main as cli_main
-
+#from cli import main as cli_main
+import cli
+cli_main = cli.main
 def main():
     parser = argparse.ArgumentParser(description="AI Trading CLI")
     parser.add_argument('--task', choices=["Predict", "Exit", "Help"], default="Predict")
 
-    
     args = parser.parse_args()
 
     if args.task == "Predict":

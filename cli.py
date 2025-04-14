@@ -1,7 +1,7 @@
 
 import datetime
-from engine_v2 import EnhancedPredictionEngine
-engine = EnhancedPredictionEngine()
+import engine_v2
+engine = engine_v2.EnhancedPredictionEngine()
 # Simulated company stock list
 companies = {
     1: "GOLD (GLD)",
