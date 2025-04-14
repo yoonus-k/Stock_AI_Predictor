@@ -1,5 +1,5 @@
 # this model is used to connect to the database and create the tables also stores the data
-# Greetings!
+# Greeting! from me
 import sys
 import os
 from pathlib import Path
