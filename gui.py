@@ -12,7 +12,7 @@ from engine_v2 import EnhancedPredictionEngine
 import send_email
 from io import BytesIO
 if "db_instance" not in st.session_state:
-    from Data.db import Database
+    from Data.db_cloud import Database
     st.session_state.db_instance = Database()
 # Initialize engine
 engine = EnhancedPredictionEngine(db=st.session_state.db_instance)
