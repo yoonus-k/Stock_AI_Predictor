@@ -1,0 +1,1760 @@
+[
+  {
+    "name": "users",
+    "schema": {
+      "name": "users",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "UserID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": true
+        },
+        {
+          "cid": 1,
+          "name": "Username",
+          "type": "VARCHAR(50)",
+          "notnull": true,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 2,
+          "name": "Password",
+          "type": "VARCHAR(255)",
+          "notnull": true,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 3,
+          "name": "Email",
+          "type": "VARCHAR(100)",
+          "notnull": true,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 4,
+          "name": "Preferences",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        }
+      ],
+      "indices": [],
+      "foreign_keys": [],
+      "creation_sql": "CREATE TABLE users (\n        UserID INTEGER PRIMARY KEY,\n        Username VARCHAR(50) NOT NULL,\n        Password VARCHAR(255) NOT NULL,\n        Email VARCHAR(100) NOT NULL,\n        Preferences TEXT\n    )"
+    },
+    "row_count": 1,
+    "sample_data": [
+      {
+        "UserID": 1,
+        "Username": "admin",
+        "Password": "<binary data: 60 bytes>",
+        "Email": "it@arabiangates.com",
+        "Preferences": "admin"
+      }
+    ]
+  },
+  {
+    "name": "notifications",
+    "schema": {
+      "name": "notifications",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "NotificationID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": true
+        },
+        {
+          "cid": 1,
+          "name": "UserID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 2,
+          "name": "PredictionID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 3,
+          "name": "SentTime",
+          "type": "DATETIME",
+          "notnull": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "pk": false
+        },
+        {
+          "cid": 4,
+          "name": "NotificationType",
+          "type": "VARCHAR(50)",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 5,
+          "name": "Status",
+          "type": "VARCHAR(20)",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        }
+      ],
+      "indices": [],
+      "foreign_keys": [],
+      "creation_sql": "CREATE TABLE notifications (\n        NotificationID INTEGER PRIMARY KEY AUTOINCREMENT,\n        UserID INTEGER,\n        PredictionID INTEGER,\n        SentTime DATETIME DEFAULT CURRENT_TIMESTAMP,\n        NotificationType VARCHAR(50),\n        Status VARCHAR(20)\n    )"
+    },
+    "row_count": 30,
+    "sample_data": [
+      {
+        "NotificationID": 1,
+        "UserID": 1,
+        "PredictionID": 1,
+        "SentTime": "2025-04-10 00:00:00",
+        "NotificationType": "Email",
+        "Status": "Pending"
+      },
+      {
+        "NotificationID": 2,
+        "UserID": 1,
+        "PredictionID": 2,
+        "SentTime": "2025-04-10 00:00:00",
+        "NotificationType": "Email",
+        "Status": "Pending"
+      },
+      {
+        "NotificationID": 3,
+        "UserID": 1,
+        "PredictionID": 3,
+        "SentTime": "2025-04-10 00:00:00",
+        "NotificationType": "Email",
+        "Status": "Pending"
+      },
+      {
+        "NotificationID": 4,
+        "UserID": 1,
+        "PredictionID": 4,
+        "SentTime": "2025-04-10 00:00:00",
+        "NotificationType": "Email",
+        "Status": "Pending"
+      },
+      {
+        "NotificationID": 5,
+        "UserID": 1,
+        "PredictionID": 5,
+        "SentTime": "2025-04-10 00:00:00",
+        "NotificationType": "Email",
+        "Status": "Pending"
+      }
+    ]
+  },
+  {
+    "name": "live_articles",
+    "schema": {
+      "name": "live_articles",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "ID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": true
+        },
+        {
+          "cid": 1,
+          "name": "Date",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 2,
+          "name": "Authors",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 3,
+          "name": "Source_Domain",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 4,
+          "name": "Source_Name",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 5,
+          "name": "Title",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 6,
+          "name": "Summary",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 7,
+          "name": "Url",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 8,
+          "name": "Topics",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 9,
+          "name": "Ticker_Sentiment",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 10,
+          "name": "Overall_Sentiment_Label",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 11,
+          "name": "Overall_Sentiment_Score",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 12,
+          "name": "Event_Type",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 13,
+          "name": "Sentiment_Label",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 14,
+          "name": "Sentiment_Score",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 15,
+          "name": "Fetch_Timestamp",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        }
+      ],
+      "indices": [],
+      "foreign_keys": [],
+      "creation_sql": "CREATE TABLE \"live_articles\"\n(\n    ID                      INTEGER\n        primary key autoincrement,\n    Date                    TEXT,\n    Authors                 TEXT,\n    Source_Domain           TEXT,\n    Source_Name             TEXT,\n    Title                   TEXT,\n    Summary                 TEXT,\n    Url                     TEXT,\n    Topics                  TEXT,\n    Ticker_Sentiment        TEXT,\n    Overall_Sentiment_Label TEXT,\n    Overall_Sentiment_Score REAL,\n    Event_Type              TEXT,\n    Sentiment_Label         TEXT,\n    Sentiment_Score         REAL,\n    Fetch_Timestamp         TEXT\n)"
+    },
+    "row_count": 24308,
+    "sample_data": [
+      {
+        "ID": 1,
+        "Date": "2025-04-12T12:01:20",
+        "Authors": "Benzinga Senior Editor",
+        "Source_Domain": "www.benzinga.com",
+        "Source_Name": "Benzinga",
+        "Title": "Bulls And Bears: Apple, Nike, US Steel - And The Markets Ride Out Ongoing Volatility Bulls And Bears: Apple, Nike, US Steel - And The Markets Ride Out Ongoing Volatility - Aehr Test System  ( NASDAQ:AEHR ) , Apple  ( NASDAQ:AAPL ) ",
+        "Summary": "Benzinga examined the prospects for many investors' favorite stocks over the last week - here's a look at some of our top stories. President Donald Trump's hold on global tariffs but imposition of a 145% levy on Chinese imports led to significant market volatility and eroding confidence in the ...",
+        "Url": "https://www.benzinga.com/25/04/44777882/benzinga-bulls-and-bears-apple-nike-us-steel-and-the-markets-ride-out-ongoing-volatility",
+        "Topics": "[{\"topic\": \"Retail & Wholesale\", \"relevance_score\": \"0.25\"}, {\"topic\": \"Financial Markets\", \"relevance_score\": \"0.5855\"}, {\"topic\": \"Manufacturing\", \"relevance_score\": \"0.25\"}, {\"topic\": \"Technology\", \"relevance_score\": \"0.25\"}, {\"topic\": \"Finance\", \"relevance_score\": \"0.25\"}]",
+        "Ticker_Sentiment": "[{\"ticker\": \"AAPL\", \"relevance_score\": \"0.165788\", \"ticker_sentiment_score\": \"0.201345\", \"ticker_sentiment_label\": \"Somewhat-Bullish\"}, {\"ticker\": \"AVGO\", \"relevance_score\": \"0.165788\", \"ticker_sentiment_score\": \"0.291561\", \"ticker_sentiment_label\": \"Somewhat-Bullish\"}, {\"ticker\": \"TSLA\", \"relevance_score\": \"0.110973\", \"ticker_sentiment_score\": \"0.150212\", \"ticker_sentiment_label\": \"Somewhat-Bullish\"}, {\"ticker\": \"BAC\", \"relevance_score\": \"0.110973\", \"ticker_sentiment_score\": \"0.162778\", \"ticker_sentiment_label\": \"Somewhat-Bullish\"}, {\"ticker\": \"NISTF\", \"relevance_score\": \"0.055621\", \"ticker_sentiment_score\": \"-0.022069\", \"ticker_sentiment_label\": \"Neutral\"}, {\"ticker\": \"MU\", \"relevance_score\": \"0.110973\", \"ticker_sentiment_score\": \"-0.160342\", \"ticker_sentiment_label\": \"Somewhat-Bearish\"}, {\"ticker\": \"X\", \"relevance_score\": \"0.165788\", \"ticker_sentiment_score\": \"-0.062832\", \"ticker_sentiment_label\": \"Neutral\"}, {\"ticker\": \"NKE\", \"relevance_score\": \"0.165788\", \"ticker_sentiment_score\": \"-0.200942\", \"ticker_sentiment_label\": \"Somewhat-Bearish\"}, {\"ticker\": \"AMZN\", \"relevance_score\": \"0.110973\", \"ticker_sentiment_score\": \"0.150212\", \"ticker_sentiment_label\": \"Somewhat-Bullish\"}, {\"ticker\": \"MRVL\", \"relevance_score\": \"0.110973\", \"ticker_sentiment_score\": \"-0.013732\", \"ticker_sentiment_label\": \"Neutral\"}, {\"ticker\": \"FOREX:USD\", \"relevance_score\": \"0.055621\", \"ticker_sentiment_score\": \"0.094635\", \"ticker_sentiment_label\": \"Neutral\"}]",
+        "Overall_Sentiment_Label": "Somewhat-Bullish",
+        "Overall_Sentiment_Score": 0.170033,
+        "Event_Type": "",
+        "Sentiment_Label": "",
+        "Sentiment_Score": 0.0,
+        "Fetch_Timestamp": "2025-04-12T16:49:24.412646"
+      },
+      {
+        "ID": 2,
+        "Date": "2025-04-12T11:00:00",
+        "Authors": "Leo Sun",
+        "Source_Domain": "www.fool.com",
+        "Source_Name": "Motley Fool",
+        "Title": "Should You Forget Apple and Buy These 2 Tech Stocks Instead?",
+        "Summary": "VeriSign and Palo Alto Networks face fewer headwinds than the iPhone maker.",
+        "Url": "https://www.fool.com/investing/2025/04/12/should-you-forget-apple-and-buy-these-2-tech-stock/",
+        "Topics": "[{\"topic\": \"Earnings\", \"relevance_score\": \"1.0\"}, {\"topic\": \"Technology\", \"relevance_score\": \"1.0\"}, {\"topic\": \"Financial Markets\", \"relevance_score\": \"0.962106\"}]",
+        "Ticker_Sentiment": "[{\"ticker\": \"AAPL\", \"relevance_score\": \"0.291182\", \"ticker_sentiment_score\": \"-0.01314\", \"ticker_sentiment_label\": \"Neutral\"}, {\"ticker\": \"GDDY\", \"relevance_score\": \"0.049629\", \"ticker_sentiment_score\": \"0.118165\", \"ticker_sentiment_label\": \"Neutral\"}, {\"ticker\": \"PANW\", \"relevance_score\": \"0.19661\", \"ticker_sentiment_score\": \"0.08133\", \"ticker_sentiment_label\": \"Neutral\"}, {\"ticker\": \"VRSN\", \"relevance_score\": \"0.244354\", \"ticker_sentiment_score\": \"0.24283\", \"ticker_sentiment_label\": \"Somewhat-Bullish\"}]",
+        "Overall_Sentiment_Label": "Somewhat-Bullish",
+        "Overall_Sentiment_Score": 0.219034,
+        "Event_Type": "",
+        "Sentiment_Label": "",
+        "Sentiment_Score": 0.0,
+        "Fetch_Timestamp": "2025-04-12T16:49:24.416646"
+      },
+      {
+        "ID": 3,
+        "Date": "2025-04-12T08:01:00",
+        "Authors": "Trevor Jennewine",
+        "Source_Domain": "www.fool.com",
+        "Source_Name": "Motley Fool",
+        "Title": "Warren Buffett Owns 2 Artificial Intelligence  ( AI )  Stocks That Wall Street Says Could Soar Up to 50%",
+        "Summary": "Berkshire Hathaway can be a great source of inspiration inspiration for individual investors. Warren Buffett, one of the most successful investors in American history, manages the vast majority of the company's $259 billion portfolio.",
+        "Url": "https://www.fool.com/investing/2025/04/12/warren-buffett-own-2-ai-stocks-wall-street-soar-50/",
+        "Topics": "[{\"topic\": \"Retail & Wholesale\", \"relevance_score\": \"0.333333\"}, {\"topic\": \"Financial Markets\", \"relevance_score\": \"0.214378\"}, {\"topic\": \"Earnings\", \"relevance_score\": \"0.999999\"}, {\"topic\": \"Technology\", \"relevance_score\": \"0.333333\"}, {\"topic\": \"Finance\", \"relevance_score\": \"0.333333\"}]",
+        "Ticker_Sentiment": "[{\"ticker\": \"SSNLF\", \"relevance_score\": \"0.042876\", \"ticker_sentiment_score\": \"0.080066\", \"ticker_sentiment_label\": \"Neutral\"}, {\"ticker\": \"AAPL\", \"relevance_score\": \"0.481177\", \"ticker_sentiment_score\": \"0.307987\", \"ticker_sentiment_label\": \"Somewhat-Bullish\"}, {\"ticker\": \"AMZN\", \"relevance_score\": \"0.481177\", \"ticker_sentiment_score\": \"0.508429\", \"ticker_sentiment_label\": \"Bullish\"}, {\"ticker\": \"BRK-A\", \"relevance_score\": \"0.042876\", \"ticker_sentiment_score\": \"0.227447\", \"ticker_sentiment_label\": \"Somewhat-Bullish\"}]",
+        "Overall_Sentiment_Label": "Somewhat-Bullish",
+        "Overall_Sentiment_Score": 0.277078,
+        "Event_Type": "",
+        "Sentiment_Label": "",
+        "Sentiment_Score": 0.0,
+        "Fetch_Timestamp": "2025-04-12T16:49:24.418646"
+      },
+      {
+        "ID": 4,
+        "Date": "2025-04-12T04:21:42",
+        "Authors": "Ananya Gairola",
+        "Source_Domain": "www.benzinga.com",
+        "Source_Name": "Benzinga",
+        "Title": "Trump And Xi Jinping's Tariff Threats May Be 'Just For The LOLz,' Says Analyst: 'It's Not Like This Is A Great Financial Crisis' - Carrier Global  ( NYSE:CARR ) , Apple  ( NASDAQ:AAPL ) ",
+        "Summary": "Despite growing concerns about renewed trade tensions between Washington and Beijing, one analyst says the drama may be more performative than policy-driven.",
+        "Url": "https://www.benzinga.com/news/global/25/04/44777185/trump-and-xi-jinpings-tariff-threats-may-be-just-for-the-lolz-says-analyst-its-not-like-this-is-a-gre",
+        "Topics": "[{\"topic\": \"Financial Markets\", \"relevance_score\": \"0.214378\"}, {\"topic\": \"Manufacturing\", \"relevance_score\": \"0.25\"}, {\"topic\": \"Energy & Transportation\", \"relevance_score\": \"0.25\"}, {\"topic\": \"Technology\", \"relevance_score\": \"0.25\"}, {\"topic\": \"Finance\", \"relevance_score\": \"0.25\"}]",
+        "Ticker_Sentiment": "[{\"ticker\": \"CARR\", \"relevance_score\": \"0.121343\", \"ticker_sentiment_score\": \"-0.02334\", \"ticker_sentiment_label\": \"Neutral\"}, {\"ticker\": \"AAPL\", \"relevance_score\": \"0.181137\", \"ticker_sentiment_score\": \"0.075194\", \"ticker_sentiment_label\": \"Neutral\"}, {\"ticker\": \"TSLA\", \"relevance_score\": \"0.181137\", \"ticker_sentiment_score\": \"0.037306\", \"ticker_sentiment_label\": \"Neutral\"}, {\"ticker\": \"KO\", \"relevance_score\": \"0.121343\", \"ticker_sentiment_score\": \"-0.064176\", \"ticker_sentiment_label\": \"Neutral\"}, {\"ticker\": \"F\", \"relevance_score\": \"0.121343\", \"ticker_sentiment_score\": \"-0.259597\", \"ticker_sentiment_label\": \"Somewhat-Bearish\"}, {\"ticker\": \"HON\", \"relevance_score\": \"0.121343\", \"ticker_sentiment_score\": \"-0.250411\", \"ticker_sentiment_label\": \"Somewhat-Bearish\"}, {\"ticker\": \"CAT\", \"relevance_score\": \"0.121343\", \"ticker_sentiment_score\": \"-0.250411\", \"ticker_sentiment_label\": \"Somewhat-Bearish\"}, {\"ticker\": \"RTX\", \"relevance_score\": \"0.121343\", \"ticker_sentiment_score\": \"0.234329\", \"ticker_sentiment_label\": \"Somewhat-Bullish\"}, {\"ticker\": \"USEG\", \"relevance_score\": \"0.060848\", \"ticker_sentiment_score\": \"-0.055109\", \"ticker_sentiment_label\": \"Neutral\"}, {\"ticker\": \"GS\", \"relevance_score\": \"0.060848\", \"ticker_sentiment_score\": \"-0.145342\", \"ticker_sentiment_label\": \"Neutral\"}, {\"ticker\": \"CMI\", \"relevance_score\": \"0.121343\", \"ticker_sentiment_score\": \"0.234329\", \"ticker_sentiment_label\": \"Somewhat-Bullish\"}]",
+        "Overall_Sentiment_Label": "Neutral",
+        "Overall_Sentiment_Score": -0.115876,
+        "Event_Type": "",
+        "Sentiment_Label": "",
+        "Sentiment_Score": 0.0,
+        "Fetch_Timestamp": "2025-04-12T16:49:24.420647"
+      },
+      {
+        "ID": 5,
+        "Date": "2025-04-11T19:19:42",
+        "Authors": "Vandana Singh",
+        "Source_Domain": "www.benzinga.com",
+        "Source_Name": "Benzinga",
+        "Title": "Inflation Might Be Easing But Tech Outlook Still Choppy, Analysts Warn - Apple  ( NASDAQ:AAPL ) ",
+        "Summary": "March CPI drops to 2.4%, below the forecasted 2.6% and down from 2.8% in February. Monthly inflation falls 0.1%, marking the weakest pace since May 2020. China's new tariffs just reignited the same market patterns that led to triple- and quadruple-digit wins for Matt Maley.",
+        "Url": "https://www.benzinga.com/25/04/44772840/analysts-warn-of-choppy-tech-outlook-despite-inflation-relief",
+        "Topics": "[{\"topic\": \"Economy - Monetary\", \"relevance_score\": \"0.9545\"}, {\"topic\": \"Technology\", \"relevance_score\": \"1.0\"}, {\"topic\": \"Financial Markets\", \"relevance_score\": \"0.684621\"}]",
+        "Ticker_Sentiment": "[{\"ticker\": \"AAPL\", \"relevance_score\": \"0.229872\", \"ticker_sentiment_score\": \"0.0\", \"ticker_sentiment_label\": \"Neutral\"}]",
+        "Overall_Sentiment_Label": "Neutral",
+        "Overall_Sentiment_Score": -0.051002,
+        "Event_Type": "",
+        "Sentiment_Label": "",
+        "Sentiment_Score": 0.0,
+        "Fetch_Timestamp": "2025-04-12T16:49:24.422646"
+      }
+    ]
+  },
+  {
+    "name": "tweets",
+    "schema": {
+      "name": "tweets",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "ID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": true
+        },
+        {
+          "cid": 1,
+          "name": "ticker_id",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 2,
+          "name": "tweet_id",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 3,
+          "name": "tweet_text",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 4,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 5,
+          "name": "retweet_count",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 6,
+          "name": "reply_count",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 7,
+          "name": "like_count",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 8,
+          "name": "quote_count",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 9,
+          "name": "bookmark_count",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 10,
+          "name": "lang",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 11,
+          "name": "is_reply",
+          "type": "BOOLEAN",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 12,
+          "name": "is_quote",
+          "type": "BOOLEAN",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 13,
+          "name": "is_retweet",
+          "type": "BOOLEAN",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 14,
+          "name": "url",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 15,
+          "name": "search_term",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 16,
+          "name": "author_username",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 17,
+          "name": "author_name",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 18,
+          "name": "author_verified",
+          "type": "BOOLEAN",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 19,
+          "name": "author_blue_verified",
+          "type": "BOOLEAN",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 20,
+          "name": "author_followers",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 21,
+          "name": "author_following",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 22,
+          "name": "sentiment_label",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 23,
+          "name": "sentiment_score",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 24,
+          "name": "sentiment_magnitude",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 25,
+          "name": "weighted_sentiment",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 26,
+          "name": "collected_at",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        }
+      ],
+      "indices": [
+        {
+          "name": "sqlite_autoindex_tweets_1",
+          "unique": true,
+          "columns": [
+            "tweet_id"
+          ]
+        }
+      ],
+      "foreign_keys": [],
+      "creation_sql": "CREATE TABLE \"tweets\"\n(\n    ID                   INTEGER\n        primary key autoincrement,\n    ticker_id            INTEGER,\n    tweet_id             TEXT\n        constraint tweets_pk\n            unique,\n    tweet_text           TEXT,\n    created_at           TEXT,\n    retweet_count        INTEGER,\n    reply_count          INTEGER,\n    like_count           INTEGER,\n    quote_count          INTEGER,\n    bookmark_count       INTEGER,\n    lang                 TEXT,\n    is_reply             BOOLEAN,\n    is_quote             BOOLEAN,\n    is_retweet           BOOLEAN,\n    url                  TEXT,\n    search_term          TEXT,\n    author_username      TEXT,\n    author_name          TEXT,\n    author_verified      BOOLEAN,\n    author_blue_verified BOOLEAN,\n    author_followers     INTEGER,\n    author_following     INTEGER,\n    sentiment_label      TEXT,\n    sentiment_score      REAL,\n    sentiment_magnitude  REAL,\n    weighted_sentiment   REAL,\n    collected_at         TEXT\n)"
+    },
+    "row_count": 16201,
+    "sample_data": [
+      {
+        "ID": 1,
+        "ticker_id": 3,
+        "tweet_id": "1912119229421146412",
+        "tweet_text": "@mightames_ Apple tree \ud83e\udd72",
+        "created_at": "2025-04-15T12:22:04+00:00",
+        "retweet_count": 0,
+        "reply_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "bookmark_count": 0,
+        "lang": "en",
+        "is_reply": 1,
+        "is_quote": 0,
+        "is_retweet": 0,
+        "url": "https://x.com/iamDeRez1/status/1912119229421146412",
+        "search_term": "$AAPL OR Apple -from:Apple",
+        "author_username": "iamDeRez1",
+        "author_name": "D\u1d07R\u1d07\u1d22",
+        "author_verified": 0,
+        "author_blue_verified": 0,
+        "author_followers": 2128,
+        "author_following": 2373,
+        "sentiment_label": "positive",
+        "sentiment_score": 0.8180049657821655,
+        "sentiment_magnitude": 0.8180049657821655,
+        "weighted_sentiment": 0.8394788772526892,
+        "collected_at": "2025-04-15T15:22:19.550833"
+      },
+      {
+        "ID": 3,
+        "ticker_id": 3,
+        "tweet_id": "1912119225113620504",
+        "tweet_text": "Good morning I\u2019m going to the Apple Store and asking them to put the missing chunk back",
+        "created_at": "2025-04-15T12:22:03+00:00",
+        "retweet_count": 0,
+        "reply_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "bookmark_count": 0,
+        "lang": "en",
+        "is_reply": 0,
+        "is_quote": 0,
+        "is_retweet": 0,
+        "url": "https://x.com/mybrotherkhalil/status/1912119225113620504",
+        "search_term": "$AAPL OR Apple -from:Apple",
+        "author_username": "mybrotherkhalil",
+        "author_name": "Khalil",
+        "author_verified": 0,
+        "author_blue_verified": 0,
+        "author_followers": 379,
+        "author_following": 966,
+        "sentiment_label": "positive",
+        "sentiment_score": 0.852975606918335,
+        "sentiment_magnitude": 0.852975606918335,
+        "weighted_sentiment": 0.903861177751222,
+        "collected_at": "2025-04-15T15:22:19.550833"
+      },
+      {
+        "ID": 4,
+        "ticker_id": 3,
+        "tweet_id": "1912119220512366727",
+        "tweet_text": "Every step you take, every hour you sleep, every meal you log\u2014your health data is being tracked by Apple Health, Fitbit, MyFitnessPal, and countless other apps. \nBut what\u2019s the point if you\u2019re not using it to improve your well-being?\n\nRight now, your most valuable insights are scattered, unstructured, and wasted. You could be making data-driven decisions to reduce stress, improve sleep, and boost focus\u2014but instead, you're left guessing. \n\nWhat if you could actually use this data to optimize your daily performance?\n\nAt https://t.co/8VEdDtHIB4, we turn fragmented health data into a personalized Daily Wellness Score. \n\nEven a 10% improvement in your score can lead to 25% higher productivity and lower stress-related costs.\n\n\u2705 Understand how small changes impact your energy & focus\n\u2705 Get AI-powered recommendations to optimize well-being\n\u2705 Turn passive data collection into actionable health insights\n\nYour data is already working for you\u2014it\u2019s time to make smarter choices with it.\nTry IntraIntel Today,\nLink in the comments. \n\n#HealthTech #AI #Wellness #Productivity #SmartDecisions",
+        "created_at": "2025-04-15T12:22:02+00:00",
+        "retweet_count": 0,
+        "reply_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "bookmark_count": 0,
+        "lang": "en",
+        "is_reply": 0,
+        "is_quote": 0,
+        "is_retweet": 0,
+        "url": "https://x.com/debroy111/status/1912119220512366727",
+        "search_term": "$AAPL OR Apple -from:Apple",
+        "author_username": "debroy111",
+        "author_name": "Dev Roy",
+        "author_verified": 0,
+        "author_blue_verified": 1,
+        "author_followers": 45,
+        "author_following": 841,
+        "sentiment_label": "positive",
+        "sentiment_score": 0.5015538930892944,
+        "sentiment_magnitude": 0.5015538930892944,
+        "weighted_sentiment": 0.3395995729729626,
+        "collected_at": "2025-04-15T15:22:19.550833"
+      },
+      {
+        "ID": 5,
+        "ticker_id": 3,
+        "tweet_id": "1912119195199758771",
+        "tweet_text": "Long weekend, last day of a four day tour of the Big Apple. My son\u2019s first trip has been a good one!\n\n#NewYorkCity #NYC https://t.co/0mCej8fvnT",
+        "created_at": "2025-04-15T12:21:56+00:00",
+        "retweet_count": 0,
+        "reply_count": 1,
+        "like_count": 0,
+        "quote_count": 0,
+        "bookmark_count": 0,
+        "lang": "en",
+        "is_reply": 0,
+        "is_quote": 0,
+        "is_retweet": 0,
+        "url": "https://x.com/BAComer/status/1912119195199758771",
+        "search_term": "$AAPL OR Apple -from:Apple",
+        "author_username": "BAComer",
+        "author_name": "BAC",
+        "author_verified": 0,
+        "author_blue_verified": 0,
+        "author_followers": 371,
+        "author_following": 208,
+        "sentiment_label": "positive",
+        "sentiment_score": 0.9820035099983215,
+        "sentiment_magnitude": 0.9820035099983215,
+        "weighted_sentiment": 1.4292871370864566,
+        "collected_at": "2025-04-15T15:22:19.550833"
+      },
+      {
+        "ID": 6,
+        "ticker_id": 3,
+        "tweet_id": "1912119194201563343",
+        "tweet_text": "Trading stats from today's session:  )*:{-       https://t.co/zZLFbvxsHx\n\n$AMZN $AAPL $BA $BABA $FB $TSLA $MSFT $ROKU https://t.co/Slah3CGBAj",
+        "created_at": "2025-04-15T12:21:56+00:00",
+        "retweet_count": 0,
+        "reply_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "bookmark_count": 0,
+        "lang": "en",
+        "is_reply": 0,
+        "is_quote": 0,
+        "is_retweet": 0,
+        "url": "https://x.com/markoni2460/status/1912119194201563343",
+        "search_term": "$AAPL OR Apple -from:Apple",
+        "author_username": "markoni2460",
+        "author_name": "markoni",
+        "author_verified": 0,
+        "author_blue_verified": 0,
+        "author_followers": 271,
+        "author_following": 6,
+        "sentiment_label": "neutral",
+        "sentiment_score": 0.0,
+        "sentiment_magnitude": 0.8292830586433411,
+        "weighted_sentiment": 0.0,
+        "collected_at": "2025-04-15T15:22:19.550833"
+      }
+    ]
+  },
+  {
+    "name": "clusters",
+    "schema": {
+      "name": "clusters",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "ClusterID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": true
+        },
+        {
+          "cid": 1,
+          "name": "StockID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": true
+        },
+        {
+          "cid": 2,
+          "name": "AVGPricePoints",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 3,
+          "name": "MarketCondition",
+          "type": "VARCHAR(20)",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 4,
+          "name": "Outcome",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 5,
+          "name": "Label",
+          "type": "VARCHAR(50)",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 6,
+          "name": "ProbabilityScore",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 7,
+          "name": "Pattern_Count",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 8,
+          "name": "MaxGain",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 9,
+          "name": "MaxDrawdown",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        }
+      ],
+      "indices": [
+        {
+          "name": "sqlite_autoindex_clusters_1",
+          "unique": true,
+          "columns": [
+            "ClusterID",
+            "StockID"
+          ]
+        }
+      ],
+      "foreign_keys": [],
+      "creation_sql": "CREATE TABLE \"clusters\"\n(\n    ClusterID        INTEGER,\n    StockID          INTEGER,\n    AVGPricePoints   TEXT,\n    MarketCondition  VARCHAR(20),\n    Outcome          REAL,\n    Label            VARCHAR(50),\n    ProbabilityScore REAL,\n    Pattern_Count    INTEGER,\n    MaxGain          REAL,\n    MaxDrawdown      REAL,\n    primary key (ClusterID, StockID)\n)"
+    },
+    "row_count": 289,
+    "sample_data": [
+      {
+        "ClusterID": 0,
+        "StockID": 1,
+        "AVGPricePoints": "0.1204282999909643,0.08004142076208343,0.7813403587138953,0.9935825223445567,0.7117818008266777",
+        "MarketCondition": "Bullish",
+        "Outcome": 0.000572540037232745,
+        "Label": "Buy",
+        "ProbabilityScore": 0.5536423841059602,
+        "Pattern_Count": 466,
+        "MaxGain": 0.0037438885658072803,
+        "MaxDrawdown": -0.003219935389844481
+      },
+      {
+        "ClusterID": 1,
+        "StockID": 1,
+        "AVGPricePoints": "0.9476779032864174,0.27824711248913536,0.05272065623734411,0.2329626862243028,0.7604704862866452",
+        "MarketCondition": "Bearish",
+        "Outcome": -0.0005121929694048881,
+        "Label": "Sell",
+        "ProbabilityScore": 0.48676470588235293,
+        "Pattern_Count": 119,
+        "MaxGain": -0.0033996977653736513,
+        "MaxDrawdown": 0.003599018529897454
+      },
+      {
+        "ClusterID": 2,
+        "StockID": 1,
+        "AVGPricePoints": "0.07441323738639874,0.8449458732272557,0.8653368072751595,0.13170884636019664,0.8340556295736535",
+        "MarketCondition": "Bullish",
+        "Outcome": -0.00039551612750351605,
+        "Label": "Sell",
+        "ProbabilityScore": 0.49125168236877526,
+        "Pattern_Count": 169,
+        "MaxGain": -0.003521490063292828,
+        "MaxDrawdown": 0.0029652131252742692
+      },
+      {
+        "ClusterID": 3,
+        "StockID": 1,
+        "AVGPricePoints": "0.6625307231674256,0.2745069290506686,0.9971139136657616,0.07055819338689445,0.19168162377711667",
+        "MarketCondition": "Bearish",
+        "Outcome": 0.0007538950921674978,
+        "Label": "Buy",
+        "ProbabilityScore": 0.5622032288698955,
+        "Pattern_Count": 363,
+        "MaxGain": 0.003562193819416933,
+        "MaxDrawdown": -0.0028321416572186214
+      },
+      {
+        "ClusterID": 4,
+        "StockID": 1,
+        "AVGPricePoints": "0.5885016108526109,0.9054504281886504,0.01778713393398098,0.9096007515866507,0.27663101397487055",
+        "MarketCondition": "Bearish",
+        "Outcome": 0.0005341400574827298,
+        "Label": "Buy",
+        "ProbabilityScore": 0.5362663495838288,
+        "Pattern_Count": 247,
+        "MaxGain": 0.003567572748882749,
+        "MaxDrawdown": -0.0033200701499902056
+      }
+    ]
+  },
+  {
+    "name": "patterns",
+    "schema": {
+      "name": "patterns",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "PatternID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": true
+        },
+        {
+          "cid": 1,
+          "name": "StockID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": true
+        },
+        {
+          "cid": 2,
+          "name": "ClusterID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 3,
+          "name": "PricePoints",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 4,
+          "name": "TimeSpan",
+          "type": "VARCHAR(50)",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 5,
+          "name": "MarketCondition",
+          "type": "VARCHAR(20)",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 6,
+          "name": "Outcome",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 7,
+          "name": "Label",
+          "type": "VARCHAR(50)",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 8,
+          "name": "MaxGain",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 9,
+          "name": "MaxDrawdown",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        }
+      ],
+      "indices": [
+        {
+          "name": "sqlite_autoindex_patterns_1",
+          "unique": true,
+          "columns": [
+            "PatternID",
+            "StockID"
+          ]
+        }
+      ],
+      "foreign_keys": [],
+      "creation_sql": "CREATE TABLE \"patterns\"\n(\n    PatternID       INTEGER,\n    StockID         INTEGER,\n    ClusterID       INTEGER,\n    PricePoints     TEXT,\n    TimeSpan        VARCHAR(50),\n    MarketCondition VARCHAR(20),\n    Outcome         REAL,\n    Label           VARCHAR(50),\n    MaxGain         REAL,\n    MaxDrawdown     REAL,\n    primary key (PatternID, StockID)\n)"
+    },
+    "row_count": 44517,
+    "sample_data": [
+      {
+        "PatternID": 0,
+        "StockID": 1,
+        "ClusterID": 2,
+        "PricePoints": "0.215189873417728,1.0,0.6766398158803213,0.0,0.7468354430380089",
+        "TimeSpan": "24",
+        "MarketCondition": "Bullish",
+        "Outcome": 0.0010342870029783789,
+        "Label": "Buy",
+        "MaxGain": 0.004844818066583212,
+        "MaxDrawdown": 0.0
+      },
+      {
+        "PatternID": 1,
+        "StockID": 1,
+        "ClusterID": 25,
+        "PricePoints": "0.6453433678268965,0.5531514581373358,0.0,0.8400752587017735,1.0",
+        "TimeSpan": "24",
+        "MarketCondition": "Bullish",
+        "Outcome": 0.0002945622262703842,
+        "Label": "Buy",
+        "MaxGain": 0.0016200922444867608,
+        "MaxDrawdown": -0.002178210146893489
+      },
+      {
+        "PatternID": 2,
+        "StockID": 1,
+        "ClusterID": 12,
+        "PricePoints": "0.5110062893081846,0.683176100628927,0.46226415094339757,0.0,1.0",
+        "TimeSpan": "24",
+        "MarketCondition": "Bullish",
+        "Outcome": -0.0007661708483600917,
+        "Label": "Sell",
+        "MaxGain": -0.0037921587444085707,
+        "MaxDrawdown": 0.0
+      },
+      {
+        "PatternID": 3,
+        "StockID": 1,
+        "ClusterID": 25,
+        "PricePoints": "0.5968841285296946,0.5725413826679642,0.0,0.8695228821811014,1.0",
+        "TimeSpan": "24",
+        "MarketCondition": "Bullish",
+        "Outcome": 0.0028611526801014617,
+        "Label": "Buy",
+        "MaxGain": 0.0011320549899588555,
+        "MaxDrawdown": -0.0018996813187665605
+      },
+      {
+        "PatternID": 4,
+        "StockID": 1,
+        "ClusterID": 25,
+        "PricePoints": "0.602987421383645,0.46226415094339757,0.0,1.0,0.6894654088050345",
+        "TimeSpan": "24",
+        "MarketCondition": "Bullish",
+        "Outcome": 0.004657698010386666,
+        "Label": "Buy",
+        "MaxGain": 0.005239910261685,
+        "MaxDrawdown": -0.0007374688516445908
+      }
+    ]
+  },
+  {
+    "name": "stock_data",
+    "schema": {
+      "name": "stock_data",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "StockEntryID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": true
+        },
+        {
+          "cid": 1,
+          "name": "StockID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": true
+        },
+        {
+          "cid": 2,
+          "name": "StockSymbol",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 3,
+          "name": "Timestamp",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 4,
+          "name": "TimeFrame",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": true
+        },
+        {
+          "cid": 5,
+          "name": "OpenPrice",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 6,
+          "name": "ClosePrice",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 7,
+          "name": "HighPrice",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 8,
+          "name": "LowPrice",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        }
+      ],
+      "indices": [
+        {
+          "name": "sqlite_autoindex_stock_data_1",
+          "unique": true,
+          "columns": [
+            "StockEntryID",
+            "StockID",
+            "TimeFrame"
+          ]
+        }
+      ],
+      "foreign_keys": [],
+      "creation_sql": "CREATE TABLE \"stock_data\"\n(\n    StockEntryID INTEGER,\n    StockID      INTEGER,\n    StockSymbol  TEXT,\n    Timestamp    TEXT,\n    TimeFrame    INTEGER,\n    OpenPrice    REAL,\n    ClosePrice   REAL,\n    HighPrice    REAL,\n    LowPrice     REAL,\n    primary key (StockEntryID, StockID, TimeFrame)\n)"
+    },
+    "row_count": 578462,
+    "sample_data": [
+      {
+        "StockEntryID": 0,
+        "StockID": 1,
+        "StockSymbol": "XAUUSD",
+        "Timestamp": "2019-01-02 01:00:00",
+        "TimeFrame": 15,
+        "OpenPrice": 1281.47,
+        "ClosePrice": 1281.46,
+        "HighPrice": 1282.57,
+        "LowPrice": 1281.43
+      },
+      {
+        "StockEntryID": 1,
+        "StockID": 1,
+        "StockSymbol": "XAUUSD",
+        "Timestamp": "2019-01-02 01:15:00",
+        "TimeFrame": 15,
+        "OpenPrice": 1281.47,
+        "ClosePrice": 1281.05,
+        "HighPrice": 1281.5,
+        "LowPrice": 1280.87
+      },
+      {
+        "StockEntryID": 2,
+        "StockID": 1,
+        "StockSymbol": "XAUUSD",
+        "Timestamp": "2019-01-02 01:30:00",
+        "TimeFrame": 15,
+        "OpenPrice": 1281.01,
+        "ClosePrice": 1281.35,
+        "HighPrice": 1281.54,
+        "LowPrice": 1280.78
+      },
+      {
+        "StockEntryID": 3,
+        "StockID": 1,
+        "StockSymbol": "XAUUSD",
+        "Timestamp": "2019-01-02 01:45:00",
+        "TimeFrame": 15,
+        "OpenPrice": 1281.35,
+        "ClosePrice": 1281.29,
+        "HighPrice": 1281.59,
+        "LowPrice": 1280.93
+      },
+      {
+        "StockEntryID": 4,
+        "StockID": 1,
+        "StockSymbol": "XAUUSD",
+        "Timestamp": "2019-01-02 02:00:00",
+        "TimeFrame": 15,
+        "OpenPrice": 1281.29,
+        "ClosePrice": 1281.71,
+        "HighPrice": 1281.79,
+        "LowPrice": 1281.25
+      }
+    ]
+  },
+  {
+    "name": "tweets_backup",
+    "schema": {
+      "name": "tweets_backup",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "ID",
+          "type": "INT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 1,
+          "name": "ticker_id",
+          "type": "INT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 2,
+          "name": "tweet_id",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 3,
+          "name": "tweet_text",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 4,
+          "name": "created_at",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 5,
+          "name": "retweet_count",
+          "type": "INT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 6,
+          "name": "reply_count",
+          "type": "INT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 7,
+          "name": "like_count",
+          "type": "INT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 8,
+          "name": "quote_count",
+          "type": "INT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 9,
+          "name": "bookmark_count",
+          "type": "INT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 10,
+          "name": "lang",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 11,
+          "name": "is_reply",
+          "type": "NUM",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 12,
+          "name": "is_quote",
+          "type": "NUM",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 13,
+          "name": "is_retweet",
+          "type": "NUM",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 14,
+          "name": "url",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 15,
+          "name": "search_term",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 16,
+          "name": "author_username",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 17,
+          "name": "author_name",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 18,
+          "name": "author_verified",
+          "type": "NUM",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 19,
+          "name": "author_blue_verified",
+          "type": "NUM",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 20,
+          "name": "author_followers",
+          "type": "INT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 21,
+          "name": "author_following",
+          "type": "INT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 22,
+          "name": "sentiment_label",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 23,
+          "name": "sentiment_score",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 24,
+          "name": "sentiment_magnitude",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 25,
+          "name": "weighted_sentiment",
+          "type": "REAL",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 26,
+          "name": "collected_at",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        }
+      ],
+      "indices": [],
+      "foreign_keys": [],
+      "creation_sql": "CREATE TABLE tweets_backup\n(\n    ID                   INT,\n    ticker_id            INT,\n    tweet_id             TEXT,\n    tweet_text           TEXT,\n    created_at           TEXT,\n    retweet_count        INT,\n    reply_count          INT,\n    like_count           INT,\n    quote_count          INT,\n    bookmark_count       INT,\n    lang                 TEXT,\n    is_reply             NUM,\n    is_quote             NUM,\n    is_retweet           NUM,\n    url                  TEXT,\n    search_term          TEXT,\n    author_username      TEXT,\n    author_name          TEXT,\n    author_verified      NUM,\n    author_blue_verified NUM,\n    author_followers     INT,\n    author_following     INT,\n    sentiment_label      TEXT,\n    sentiment_score      REAL,\n    sentiment_magnitude  REAL,\n    weighted_sentiment   REAL,\n    collected_at         TEXT\n)"
+    },
+    "row_count": 14426,
+    "sample_data": [
+      {
+        "ID": 1,
+        "ticker_id": 3,
+        "tweet_id": "1912119229421146412",
+        "tweet_text": "@mightames_ Apple tree \ud83e\udd72",
+        "created_at": "2025-04-15T12:22:04+00:00",
+        "retweet_count": 0,
+        "reply_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "bookmark_count": 0,
+        "lang": "en",
+        "is_reply": 1,
+        "is_quote": 0,
+        "is_retweet": 0,
+        "url": "https://x.com/iamDeRez1/status/1912119229421146412",
+        "search_term": "$AAPL OR Apple -from:Apple",
+        "author_username": "iamDeRez1",
+        "author_name": "D\u1d07R\u1d07\u1d22",
+        "author_verified": 0,
+        "author_blue_verified": 0,
+        "author_followers": 2128,
+        "author_following": 2373,
+        "sentiment_label": "positive",
+        "sentiment_score": 0.8180049657821655,
+        "sentiment_magnitude": 0.8180049657821655,
+        "weighted_sentiment": 0.8394788772526892,
+        "collected_at": "2025-04-15T15:22:19.550833"
+      },
+      {
+        "ID": 3,
+        "ticker_id": 3,
+        "tweet_id": "1912119225113620504",
+        "tweet_text": "Good morning I\u2019m going to the Apple Store and asking them to put the missing chunk back",
+        "created_at": "2025-04-15T12:22:03+00:00",
+        "retweet_count": 0,
+        "reply_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "bookmark_count": 0,
+        "lang": "en",
+        "is_reply": 0,
+        "is_quote": 0,
+        "is_retweet": 0,
+        "url": "https://x.com/mybrotherkhalil/status/1912119225113620504",
+        "search_term": "$AAPL OR Apple -from:Apple",
+        "author_username": "mybrotherkhalil",
+        "author_name": "Khalil",
+        "author_verified": 0,
+        "author_blue_verified": 0,
+        "author_followers": 379,
+        "author_following": 966,
+        "sentiment_label": "positive",
+        "sentiment_score": 0.852975606918335,
+        "sentiment_magnitude": 0.852975606918335,
+        "weighted_sentiment": 0.903861177751222,
+        "collected_at": "2025-04-15T15:22:19.550833"
+      },
+      {
+        "ID": 4,
+        "ticker_id": 3,
+        "tweet_id": "1912119220512366727",
+        "tweet_text": "Every step you take, every hour you sleep, every meal you log\u2014your health data is being tracked by Apple Health, Fitbit, MyFitnessPal, and countless other apps. \nBut what\u2019s the point if you\u2019re not using it to improve your well-being?\n\nRight now, your most valuable insights are scattered, unstructured, and wasted. You could be making data-driven decisions to reduce stress, improve sleep, and boost focus\u2014but instead, you're left guessing. \n\nWhat if you could actually use this data to optimize your daily performance?\n\nAt https://t.co/8VEdDtHIB4, we turn fragmented health data into a personalized Daily Wellness Score. \n\nEven a 10% improvement in your score can lead to 25% higher productivity and lower stress-related costs.\n\n\u2705 Understand how small changes impact your energy & focus\n\u2705 Get AI-powered recommendations to optimize well-being\n\u2705 Turn passive data collection into actionable health insights\n\nYour data is already working for you\u2014it\u2019s time to make smarter choices with it.\nTry IntraIntel Today,\nLink in the comments. \n\n#HealthTech #AI #Wellness #Productivity #SmartDecisions",
+        "created_at": "2025-04-15T12:22:02+00:00",
+        "retweet_count": 0,
+        "reply_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "bookmark_count": 0,
+        "lang": "en",
+        "is_reply": 0,
+        "is_quote": 0,
+        "is_retweet": 0,
+        "url": "https://x.com/debroy111/status/1912119220512366727",
+        "search_term": "$AAPL OR Apple -from:Apple",
+        "author_username": "debroy111",
+        "author_name": "Dev Roy",
+        "author_verified": 0,
+        "author_blue_verified": 1,
+        "author_followers": 45,
+        "author_following": 841,
+        "sentiment_label": "positive",
+        "sentiment_score": 0.5015538930892944,
+        "sentiment_magnitude": 0.5015538930892944,
+        "weighted_sentiment": 0.3395995729729626,
+        "collected_at": "2025-04-15T15:22:19.550833"
+      },
+      {
+        "ID": 5,
+        "ticker_id": 3,
+        "tweet_id": "1912119195199758771",
+        "tweet_text": "Long weekend, last day of a four day tour of the Big Apple. My son\u2019s first trip has been a good one!\n\n#NewYorkCity #NYC https://t.co/0mCej8fvnT",
+        "created_at": "2025-04-15T12:21:56+00:00",
+        "retweet_count": 0,
+        "reply_count": 1,
+        "like_count": 0,
+        "quote_count": 0,
+        "bookmark_count": 0,
+        "lang": "en",
+        "is_reply": 0,
+        "is_quote": 0,
+        "is_retweet": 0,
+        "url": "https://x.com/BAComer/status/1912119195199758771",
+        "search_term": "$AAPL OR Apple -from:Apple",
+        "author_username": "BAComer",
+        "author_name": "BAC",
+        "author_verified": 0,
+        "author_blue_verified": 0,
+        "author_followers": 371,
+        "author_following": 208,
+        "sentiment_label": "positive",
+        "sentiment_score": 0.9820035099983215,
+        "sentiment_magnitude": 0.9820035099983215,
+        "weighted_sentiment": 1.4292871370864566,
+        "collected_at": "2025-04-15T15:22:19.550833"
+      },
+      {
+        "ID": 6,
+        "ticker_id": 3,
+        "tweet_id": "1912119194201563343",
+        "tweet_text": "Trading stats from today's session:  )*:{-       https://t.co/zZLFbvxsHx\n\n$AMZN $AAPL $BA $BABA $FB $TSLA $MSFT $ROKU https://t.co/Slah3CGBAj",
+        "created_at": "2025-04-15T12:21:56+00:00",
+        "retweet_count": 0,
+        "reply_count": 0,
+        "like_count": 0,
+        "quote_count": 0,
+        "bookmark_count": 0,
+        "lang": "en",
+        "is_reply": 0,
+        "is_quote": 0,
+        "is_retweet": 0,
+        "url": "https://x.com/markoni2460/status/1912119194201563343",
+        "search_term": "$AAPL OR Apple -from:Apple",
+        "author_username": "markoni2460",
+        "author_name": "markoni",
+        "author_verified": 0,
+        "author_blue_verified": 0,
+        "author_followers": 271,
+        "author_following": 6,
+        "sentiment_label": "neutral",
+        "sentiment_score": 0.0,
+        "sentiment_magnitude": 0.8292830586433411,
+        "weighted_sentiment": 0.0,
+        "collected_at": "2025-04-15T15:22:19.550833"
+      }
+    ]
+  },
+  {
+    "name": "predictions",
+    "schema": {
+      "name": "predictions",
+      "columns": [
+        {
+          "cid": 0,
+          "name": "PredictionID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": true
+        },
+        {
+          "cid": 1,
+          "name": "StockID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 2,
+          "name": "PatternID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 3,
+          "name": "NewsID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 4,
+          "name": "TweetID",
+          "type": "INTEGER",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 5,
+          "name": "PredictionDate",
+          "type": "DATETIME DATETIME",
+          "notnull": false,
+          "default_value": "CURRENT_TIMESTAMP",
+          "pk": false
+        },
+        {
+          "cid": 6,
+          "name": "PredictedOutcome",
+          "type": "TEXT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        },
+        {
+          "cid": 7,
+          "name": "ConfidenceLevel",
+          "type": "FLOAT",
+          "notnull": false,
+          "default_value": null,
+          "pk": false
+        }
+      ],
+      "indices": [],
+      "foreign_keys": [],
+      "creation_sql": "CREATE TABLE \"predictions\" (\n        PredictionID INTEGER PRIMARY KEY AUTOINCREMENT,\n        StockID INTEGER,\n        PatternID INTEGER,\n        NewsID INTEGER,\n        TweetID INTEGER,\n        PredictionDate DATETIME DATETIME DEFAULT CURRENT_TIMESTAMP,\n        PredictedOutcome TEXT CHECK(json_valid(PredictedOutcome)),\n        ConfidenceLevel FLOAT\n    )"
+    },
+    "row_count": 22,
+    "sample_data": [
+      {
+        "PredictionID": 32,
+        "StockID": 1,
+        "PatternID": 19,
+        "NewsID": 0,
+        "TweetID": 0,
+        "PredictionDate": "2025-04-10 00:00:00",
+        "PredictedOutcome": "{\"date\": \"2025-04-10 00:00:00\", \"stock_id\": 1, \"stock_name\": \"GOLD (XAUUSD)\", \"current_price\": 3080.0, \"pattern_prediction\": 3081.774923960842, \"final_prediction\": 3082.3888788077315, \"confidence\": 0.5368532654792197, \"action\": \"WEAK BUY\", \"position_size\": 9626.542566817852, \"pattern_metrics\": {\"pattern_id\": 19, \"type\": \"Buy\", \"probability\": 0.4868532654792197, \"max_gain\": 0.003830958336284974, \"max_drawdown\": -0.003058014228975986, \"reward_risk_ratio\": 1.252760140873451}, \"sentiment_metrics\": {\"Predicted News Sentiment Score\": 0.05, \"Predicted Impact Score\": 0.05, \"News Count\": 1, \"Bullish Ratio\": 0.0, \"Bearish Ratio\": 0.0, \"Summary of the News\": \"U.S. stock futures climbed early Thursday, buoyed by strong earnings reports from two of the \\\"Magnificent 7\\\" companies after Wednesday's market close. While markets were rattled by the Commerce Depart...\", \"Top Topics\": [\"Financial Markets\", \"Technology\", \"Earnings\"], \"Most Relevant Article\": {\"title\": \"US Stock Futures Rise As Meta, Microsoft Earnings Fuel Optimism: GDP Slump Linked To Tariff Anticipation, Not Recession, Says Analyst - Apple  ( NASDAQ:AAPL ) , Airbnb  ( NASDAQ:ABNB ) \", \"summary\": \"U.S. stock futures climbed early Thursday, buoyed by strong earnings reports from two of the \\\"Magnificent 7\\\" companies after Wednesday's market close. While markets were rattled by the Commerce Department's report of a 0.3% GDP contraction, major indexes rebounded and ended the previous session ...\", \"url\": \"https://www.benzinga.com/markets/equities/25/05/45128568/us-stock-futures-rise-as-meta-microsoft-earnings-fuel-optimism-gdp-slump-linked-to-tariff-antici\", \"source\": \"Benzinga\", \"time_published\": \"20250501T101007\", \"relevance_score\": 0.042647, \"sentiment_score\": 0.054498}}, \"twitter_sentiment\": {\"tweets_sentiment_score\": -0.055430758212293894, \"tweets_count\": 28, \"most_positive_tweet\": \"$CHAU Gold pegged stabil coin (CHAU)\\n\\nTodays Prices \\nXAU/USDT $3042 ( Gold ) \\ud83d\\udcc8\\nCHAU/USDT $3042 ( Gold ) \\ud83d\\udcc8\\n\\nCHAU is a de-facto over collateralised stabil coin pegged to the price of gold. Decentralised pegging mechanism a hybrid between the solutions developed by Maker (MKR) and Synthetix (SYN). It borrows the best aspect from both systems where it has:\\n\\u25cf A lot lower collateral requirement than Synthetix\\n\\u25cf Better reward structure for opening of positions compared to Maker DAO\\n\\u25cf Non-inflationary stability mechanisms for the recapitalization of the system\\n\\u25cf 1:1 profit with the actual tracked asset\\n\\n\\ud83d\\udd25 https://t.co/hdmC7febBL\\n\\n#ChrysusDAO #CHAU #GOVtoken #MKR #Gold #Stabilcoin\\n\\n\\ud83e\\udd47\\ud83d\\udcca \\ud83e\\udd47\\ud83d\\udcca \\ud83e\\udd47\\ud83d\\udcca \\ud83e\\udd47\\ud83d\\udcca \\ud83e\\udd47\\ud83d\\udcca\", \"most_negative_tweet\": \"The greatest trick the devil ever pulled was convincing Wall Street the US could reshore its defense industrial base without crushing the real value of the UST market.\\n\\n\\\"And just like that, the purchasing power of your LT USTs in gold and BTC terms...is gone.\\\" https://t.co/GKmeZgBthw\", \"tweets_weighted_sentiment_score\": -0.03835470163257222}}",
+        "ConfidenceLevel": 0.5368532654792197
+      },
+      {
+        "PredictionID": 33,
+        "StockID": 3,
+        "PatternID": 56,
+        "NewsID": 0,
+        "TweetID": 0,
+        "PredictionDate": "2025-04-10 00:00:00",
+        "PredictedOutcome": "{\"date\": \"2025-04-10 00:00:00\", \"stock_id\": 3, \"stock_name\": \"APPL (AAPL)\", \"current_price\": 199.43, \"pattern_prediction\": 200.77194381968945, \"final_prediction\": 200.8953937502843, \"confidence\": 0.6479381443298969, \"action\": \"WEAK BUY\", \"position_size\": 13422.625887720935, \"pattern_metrics\": {\"pattern_id\": 56, \"type\": \"Buy\", \"probability\": 0.5979381443298969, \"max_gain\": 0.013203984318550679, \"max_drawdown\": -0.008105474144064088, \"reward_risk_ratio\": 1.629020595694627}, \"sentiment_metrics\": {\"Predicted News Sentiment Score\": 0.11, \"Predicted Impact Score\": 0.16, \"News Count\": 50, \"Bullish Ratio\": 36.0, \"Bearish Ratio\": 2.0, \"Summary of the News\": \"Smart Beta ETF report for ... U.S. stock futures climbed early Thursday, buoyed by strong earnings reports from two of the \\\"Magnificent 7\\\" companies after Wednesday's market close. While markets were ...\", \"Top Topics\": [\"Financial Markets\", \"Technology\", \"Earnings\"], \"Most Relevant Article\": {\"title\": \"Apple Ordered To Ease App Store Rules In US - Epic Games CEO Tim Sweeney Proposes Peace Deal, Saying 'We'll Return Fortnite' And Drop All Litigation Only If... - Tencent Holdings  ( OTC:TCEHY ) \", \"summary\": \"Following a U.S. court ruling that found Apple Inc. AAPL violated the spirit of an injunction against anti-steering practices, Epic Games, backed by Tencent Holdings TCEHY, has offered to bring Fortnite back to the App Store if the tech giant fulfills this one condition.\", \"url\": \"https://www.benzinga.com/news/legal/25/04/45123864/apple-ordered-to-ease-app-store-rules-in-us-epic-games-ceo-tim-sweeney-proposes-peace-deal-saying-well\", \"source\": \"Benzinga\", \"time_published\": \"20250501T013457\", \"relevance_score\": 0.811403, \"sentiment_score\": 0.133089}}, \"twitter_sentiment\": {\"tweets_sentiment_score\": 0.10743673245112101, \"tweets_count\": 15, \"most_positive_tweet\": \"This is insane.\\n\\n$NVDA +15%\\n$TSLA +17%\\n$AAPL +11%\\n$META +11.6%\\n$PLTR +17.3%\\n$AMZN +9.8%\\n$MSFT +8.4%\\n\\nAnother day for the history books. https://t.co/lONWXlVaCQ\", \"most_negative_tweet\": \"I know we were in squeeze mode but $AAPL up 15% when Trump just increased tariff on China to 125% seems wrong lol https://t.co/i47aFSJy6B\", \"tweets_weighted_sentiment_score\": 0.030175801188507698}}",
+        "ConfidenceLevel": 0.6479381443298969
+      },
+      {
+        "PredictionID": 34,
+        "StockID": 3,
+        "PatternID": 8,
+        "NewsID": 0,
+        "TweetID": 0,
+        "PredictionDate": "2025-04-30 00:00:00",
+        "PredictedOutcome": "{\"date\": \"2025-04-30 00:00:00\", \"stock_id\": 3, \"stock_name\": \"APPL (AAPL)\", \"current_price\": 182.39999389648438, \"pattern_prediction\": 181.9756876908115, \"final_prediction\": 182.0951514404402, \"confidence\": 0.46322751322751327, \"action\": \"WEAK SELL\", \"position_size\": -8675.784069046786, \"pattern_metrics\": {\"pattern_id\": 8, \"type\": \"Sell\", \"probability\": 0.5132275132275133, \"max_gain\": -0.017764152597915413, \"max_drawdown\": 0.014980200419682475, \"reward_risk_ratio\": -1.1858421182786785}, \"sentiment_metrics\": {\"Predicted News Sentiment Score\": 0.13, \"Predicted Impact Score\": 0.17, \"News Count\": 50, \"Bullish Ratio\": 40.0, \"Bearish Ratio\": 2.0, \"Summary of the News\": \"A more conservative goal of $100 monthly dividend income would require 1,200 shares of Apple. An investor would need to own $1,275,000 worth of Apple to generate a monthly dividend income of $500. Tod...\", \"Top Topics\": [\"Financial Markets\", \"Technology\", \"Earnings\"], \"Most Relevant Article\": {\"title\": \"Apple Ordered To Ease App Store Rules In US - Epic Games CEO Tim Sweeney Proposes Peace Deal, Saying 'We'll Return Fortnite' And Drop All Litigation Only If... - Tencent Holdings  ( OTC:TCEHY ) \", \"summary\": \"Following a U.S. court ruling that found Apple Inc. AAPL violated the spirit of an injunction against anti-steering practices, Epic Games, backed by Tencent Holdings TCEHY, has offered to bring Fortnite back to the App Store if the tech giant fulfills this one condition.\", \"url\": \"https://www.benzinga.com/news/legal/25/04/45123864/apple-ordered-to-ease-app-store-rules-in-us-epic-games-ceo-tim-sweeney-proposes-peace-deal-saying-well\", \"source\": \"Benzinga\", \"time_published\": \"20250501T013457\", \"relevance_score\": 0.811403, \"sentiment_score\": 0.133089}}, \"twitter_sentiment\": {\"tweets_sentiment_score\": 0.5215881280601025, \"tweets_count\": 32, \"most_positive_tweet\": \"$AAPL #AAPL Well these look quite similar... https://t.co/eIpCbCXLy6\", \"most_negative_tweet\": \"If you purchased $AAPL stock on its IPO day in 1980, and put $1000 in, today you will have $2.2 million. \\n\\nBut what you may not know is that if you purchased $1000 of $aapl stock in 1980, in 2000, you would have had $840.\", \"tweets_weighted_sentiment_score\": 0.24279340940939736}}",
+        "ConfidenceLevel": 0.46322751322751327
+      },
+      {
+        "PredictionID": 35,
+        "StockID": 3,
+        "PatternID": 40,
+        "NewsID": 0,
+        "TweetID": 0,
+        "PredictionDate": "2025-04-30 00:00:00",
+        "PredictedOutcome": "{\"date\": \"2025-04-30 00:00:00\", \"stock_id\": 3, \"stock_name\": \"APPL (AAPL)\", \"current_price\": 206.80499267578125, \"pattern_prediction\": 207.19743799177968, \"final_prediction\": 207.33288591224948, \"confidence\": 0.593010752688172, \"action\": \"WEAK BUY\", \"position_size\": 9077.480037246449, \"pattern_metrics\": {\"pattern_id\": 40, \"type\": \"Buy\", \"probability\": 0.543010752688172, \"max_gain\": 0.01341931697536911, \"max_drawdown\": -0.011774807627105735, \"reward_risk_ratio\": 1.1396633728841308}, \"sentiment_metrics\": {\"Predicted News Sentiment Score\": 0.13, \"Predicted Impact Score\": 0.17, \"News Count\": 50, \"Bullish Ratio\": 40.0, \"Bearish Ratio\": 2.0, \"Summary of the News\": \"A more conservative goal of $100 monthly dividend income would require 1,200 shares of Apple. An investor would need to own $1,275,000 worth of Apple to generate a monthly dividend income of $500. Tod...\", \"Top Topics\": [\"Financial Markets\", \"Technology\", \"Earnings\"], \"Most Relevant Article\": {\"title\": \"Apple Ordered To Ease App Store Rules In US - Epic Games CEO Tim Sweeney Proposes Peace Deal, Saying 'We'll Return Fortnite' And Drop All Litigation Only If... - Tencent Holdings  ( OTC:TCEHY ) \", \"summary\": \"Following a U.S. court ruling that found Apple Inc. AAPL violated the spirit of an injunction against anti-steering practices, Epic Games, backed by Tencent Holdings TCEHY, has offered to bring Fortnite back to the App Store if the tech giant fulfills this one condition.\", \"url\": \"https://www.benzinga.com/news/legal/25/04/45123864/apple-ordered-to-ease-app-store-rules-in-us-epic-games-ceo-tim-sweeney-proposes-peace-deal-saying-well\", \"source\": \"Benzinga\", \"time_published\": \"20250501T013457\", \"relevance_score\": 0.811403, \"sentiment_score\": 0.133089}}, \"twitter_sentiment\": {\"tweets_sentiment_score\": 0.5215881280601025, \"tweets_count\": 32, \"most_positive_tweet\": \"$AAPL #AAPL Well these look quite similar... https://t.co/eIpCbCXLy6\", \"most_negative_tweet\": \"If you purchased $AAPL stock on its IPO day in 1980, and put $1000 in, today you will have $2.2 million. \\n\\nBut what you may not know is that if you purchased $1000 of $aapl stock in 1980, in 2000, you would have had $840.\", \"tweets_weighted_sentiment_score\": 0.24279340940939736}}",
+        "ConfidenceLevel": 0.593010752688172
+      },
+      {
+        "PredictionID": 36,
+        "StockID": 3,
+        "PatternID": 19,
+        "NewsID": 0,
+        "TweetID": 0,
+        "PredictionDate": "2025-05-01 00:00:00",
+        "PredictedOutcome": "{\"date\": \"2025-05-01 00:00:00\", \"stock_id\": 3, \"stock_name\": \"APPL (AAPL)\", \"current_price\": 206.32000732421875, \"pattern_prediction\": 207.80379427571776, \"final_prediction\": 207.93892455270867, \"confidence\": 0.5340041279669763, \"action\": \"WEAK BUY\", \"position_size\": 11010.900381701491, \"pattern_metrics\": {\"pattern_id\": 19, \"type\": \"Buy\", \"probability\": 0.4840041279669763, \"max_gain\": 0.017122932554513647, \"max_drawdown\": -0.011927566461856012, \"reward_risk_ratio\": 1.4355763691841295}, \"sentiment_metrics\": {\"Predicted News Sentiment Score\": 0.13, \"Predicted Impact Score\": 0.17, \"News Count\": 50, \"Bullish Ratio\": 42.0, \"Bearish Ratio\": 2.0, \"Summary of the News\": \"Apple stock shows short-term bullish signals, but longer-term indicators suggest resistance remains. Tariffs and AI delays may curb hardware momentum; services segment expected to grow double digits. ...\", \"Top Topics\": [\"Financial Markets\", \"Technology\", \"Earnings\"], \"Most Relevant Article\": {\"title\": \"Apple Ordered To Ease App Store Rules In US - Epic Games CEO Tim Sweeney Proposes Peace Deal, Saying 'We'll Return Fortnite' And Drop All Litigation Only If... - Tencent Holdings  ( OTC:TCEHY ) \", \"summary\": \"Following a U.S. court ruling that found Apple Inc. AAPL violated the spirit of an injunction against anti-steering practices, Epic Games, backed by Tencent Holdings TCEHY, has offered to bring Fortnite back to the App Store if the tech giant fulfills this one condition.\", \"url\": \"https://www.benzinga.com/news/legal/25/04/45123864/apple-ordered-to-ease-app-store-rules-in-us-epic-games-ceo-tim-sweeney-proposes-peace-deal-saying-well\", \"source\": \"Benzinga\", \"time_published\": \"20250501T013457\", \"relevance_score\": 0.811403, \"sentiment_score\": 0.133089}}, \"twitter_sentiment\": {\"tweets_sentiment_score\": 0.07639995962381363, \"tweets_count\": 16, \"most_positive_tweet\": \"TRADE PLAN for Wednesday \\ud83d\\udd25\\ud83d\\udcc8\\n\\n$SPX setting up for a run to 5670 by Friday if we can get a positive reaction to $META $AMZN $AAPL earnings. \\nSPX 5600C can work above 5565\\n\\n$TSLA finally closed above 290. TSLA to 300 possible tomorrow. If it reclaims 300..325 can come by next week. \\nTSLA 300C is best above 290\\n\\n$META 600 in play if theres a positive reaction to earnings.\\nMETA May 2 600C is best as an earnings lotto.\", \"most_negative_tweet\": \"Breaking: Apple, $AAPL, violated an antitrust ruling over its App Store, a judge ruled. The case was referred to federal prosecutors for a criminal contempt investigation.\", \"tweets_weighted_sentiment_score\": 0.023229663543968326}}",
+        "ConfidenceLevel": 0.5340041279669763
+      }
+    ]
+  }
+]

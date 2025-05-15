@@ -1,0 +1,15 @@
+USD NEWS SENTIMENT AND PRICE CORRELATION ANALYSIS: XAUUSD
+================================================================================
+
+Analysis period: 2024-11-18 to 2025-05-13
+Total days analyzed: 167157
+
+KEY CORRELATIONS:
+News Sentiment to Returns: -0.0045
+News Sentiment to Next-Day Returns: -0.0047
+Combined Sentiment to Returns: -0.0052
+Combined Sentiment to Next-Day Returns: -0.0052
+Sentiment Momentum (3d) to Next-Day Returns: -0.0047
+Sentiment Momentum (5d) to Next-Day Returns: nan
+
+Granger causality (most significant lags):

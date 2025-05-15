@@ -1,0 +1,105 @@
+Parameter Testing Report for Gold
+==============================
+
+Stock: XAUUSD (ID: 1)
+Timeframe: 1 Hour (ID: 5)
+Date: 2025-05-13 22:12:18
+
+Top 5 Parameter Combinations by Weighted Score
+-------------------------------------------
+1. n_pips=7.0, lookback=48.0, hold_period=12.0
+   - Weighted Score: 0.86
+   - Profit Factor: 29.41
+   - Reward-Risk Ratio: 4.35
+   - Number of Clusters: 18.0
+   - Number of Patterns: 140.0
+   - Cluster Distribution: 10.0 bullish, 8.0 bearish, 0.0 neutral
+
+2. n_pips=7.0, lookback=48.0, hold_period=6.0
+   - Weighted Score: 0.85
+   - Profit Factor: 35.49
+   - Reward-Risk Ratio: 6.20
+   - Number of Clusters: 19.0
+   - Number of Patterns: 143.0
+   - Cluster Distribution: 13.0 bullish, 6.0 bearish, 0.0 neutral
+
+3. n_pips=8.0, lookback=36.0, hold_period=12.0
+   - Weighted Score: 0.84
+   - Profit Factor: 20.00
+   - Reward-Risk Ratio: 4.30
+   - Number of Clusters: 21.0
+   - Number of Patterns: 171.0
+   - Cluster Distribution: 8.0 bullish, 13.0 bearish, 0.0 neutral
+
+4. n_pips=8.0, lookback=48.0, hold_period=6.0
+   - Weighted Score: 0.84
+   - Profit Factor: 7.88
+   - Reward-Risk Ratio: 2.49
+   - Number of Clusters: 21.0
+   - Number of Patterns: 171.0
+   - Cluster Distribution: 13.0 bullish, 8.0 bearish, 0.0 neutral
+
+5. n_pips=6.0, lookback=12.0, hold_period=6.0
+   - Weighted Score: 0.83
+   - Profit Factor: 7.09
+   - Reward-Risk Ratio: 2.11
+   - Number of Clusters: 23.0
+   - Number of Patterns: 238.0
+   - Cluster Distribution: 10.0 bullish, 13.0 bearish, 0.0 neutral
+
+Top 5 Parameter Combinations by Profit Factor
+------------------------------------------
+1. n_pips=7.0, lookback=48.0, hold_period=6.0
+   - Profit Factor: 35.49
+   - Weighted Score: 0.85
+   - Reward-Risk Ratio: 6.20
+   - Number of Clusters: 19.0
+   - Number of Patterns: 143.0
+
+2. n_pips=7.0, lookback=48.0, hold_period=12.0
+   - Profit Factor: 29.41
+   - Weighted Score: 0.86
+   - Reward-Risk Ratio: 4.35
+   - Number of Clusters: 18.0
+   - Number of Patterns: 140.0
+
+3. n_pips=8.0, lookback=36.0, hold_period=12.0
+   - Profit Factor: 20.00
+   - Weighted Score: 0.84
+   - Reward-Risk Ratio: 4.30
+   - Number of Clusters: 21.0
+   - Number of Patterns: 171.0
+
+4. n_pips=7.0, lookback=36.0, hold_period=6.0
+   - Profit Factor: 18.60
+   - Weighted Score: 0.71
+   - Reward-Risk Ratio: 2.90
+   - Number of Clusters: 12.0
+   - Number of Patterns: 180.0
+
+5. n_pips=6.0, lookback=48.0, hold_period=6.0
+   - Profit Factor: 11.36
+   - Weighted Score: 0.76
+   - Reward-Risk Ratio: 2.38
+   - Number of Clusters: 14.0
+   - Number of Patterns: 118.0
+
+Parameter Impact Analysis
+------------------------
+Impact of Number of PIPs:
+   - 3.0 PIPs: Score=0.60, PF=3.26, RR=1.70, Avg Patterns=62.6
+   - 4.0 PIPs: Score=0.71, PF=4.66, RR=1.88, Avg Patterns=105.9
+   - 5.0 PIPs: Score=0.71, PF=4.02, RR=1.67, Avg Patterns=138.9
+   - 6.0 PIPs: Score=0.74, PF=6.02, RR=2.08, Avg Patterns=167.6
+   - 7.0 PIPs: Score=0.73, PF=14.51, RR=2.86, Avg Patterns=185.9
+   - 8.0 PIPs: Score=0.78, PF=8.70, RR=2.53, Avg Patterns=198.0
+
+Impact of Lookback Window:
+   - 12.0 periods: Score=0.72, PF=4.17, RR=1.75, Avg Patterns=218.3
+   - 24.0 periods: Score=0.69, PF=4.17, RR=1.88, Avg Patterns=157.2
+   - 36.0 periods: Score=0.72, PF=7.66, RR=2.26, Avg Patterns=125.2
+   - 48.0 periods: Score=0.72, PF=10.10, RR=2.41, Avg Patterns=109.2
+
+Impact of Hold Period:
+   - 6.0 periods: Score=0.72, PF=7.17, RR=2.16, Avg Patterns=152.5
+   - 12.0 periods: Score=0.70, PF=6.45, RR=2.07, Avg Patterns=130.6

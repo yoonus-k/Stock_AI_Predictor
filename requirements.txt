@@ -109,7 +109,7 @@ nbformat
 nest-asyncio
 networkx
 nltk
-numpy
+numpy<2.0.0
 openpyxl
 opt_einsum
 optree

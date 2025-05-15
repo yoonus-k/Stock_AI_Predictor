@@ -1,7 +1,7 @@
 import argparse
 import sys
 import subprocess
-import cli
+import Interface.cli as cli
 
 def main():
     parser = argparse.ArgumentParser(description="AI Trading CLI/GUI Launcher")

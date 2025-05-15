@@ -9,68 +9,131 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 
 class Pattern_Miner:
+    """
+    Pattern_Miner: A class for identifying, clustering, and analyzing price patterns in financial data.
+    
+    This class implements the Perceptually Important Points (PIP) algorithm to identify key points
+    in time series data, clusters similar patterns, and analyzes their predictive performance.
+    """
 
-    def __init__(self, n_pips: int=5, lookback: int=24, hold_period: int=6 , returns_hold_period: int=6):
+    def __init__(self, n_pips: int=5, lookback: int=24, hold_period: int=6, returns_hold_period: int=6, distance_measure: int=2):
+        """
+        Initialize the Pattern_Miner with configuration parameters.
+        
+        Parameters:
+        -----------
+        n_pips : int
+            Number of perceptually important points to identify in each pattern
+        lookback : int
+            Number of candles to look back when identifying patterns
+        hold_period : int
+            Number of candles to hold a position after pattern identification
+        returns_hold_period : int
+            Number of candles to measure returns over after pattern identification
+        distance_measure : int
+            Distance measure to use for PIP identification:
+            1 = Euclidean Distance
+            2 = Perpendicular Distance (default)
+            3 = Vertical Distance
+        """
+        # Configuration parameters
+        self._n_pips = n_pips
+        self._lookback = lookback
+        self._hold_period = hold_period
+        self._returns_hold_period = returns_hold_period
+        self._distance_measure = distance_measure
+          
+        
+        # Configuration parameters
         self._n_pips = n_pips
         self._lookback = lookback
         self._hold_period = hold_period
         self._returns_hold_period = returns_hold_period
         
-        self._unique_pip_patterns = [] # List of unique patterns, each pattern is a list of the normalized price points
-        self._unique_pip_indices = [] # List of the last indices of the unique patterns in the original data
-        self._global_pip_indices = [] # List of each pattern's global indices, each pattern is a list of the global indices of the price points in the pattern like [0, 1, 2, 3, 4] for the first pattern and [5, 6, 7, 8, 9] for the second pattern
-        self._cluster_centers = [] # List of cluster centers, each center is a list of the unique price points of the patterns centered around the center
-        self._pip_clusters = [] # List of clusters, each cluster is a list of indices of the unique patterns array
+        # Pattern storage
+        self._unique_pip_patterns = []  # List of unique patterns, each pattern is a list of normalized price points
+        self._unique_pip_indices = []   # List of the last indices of the unique patterns in the original data
+        self._global_pip_indices = []   # List of each pattern's global indices in the source data
+        
+        # Clustering results
+        self._cluster_centers = []      # List of cluster centers (centroids)
+        self._pip_clusters = []         # List of clusters, each cluster is a list of indices into unique_pip_patterns
+        
+        # some statistics
+        self._max_patterns_count = None # Maximum number of patterns in any cluster
+        self._avg_patterns_count = None # Average number of patterns in all clusters
 
+        # Signal generation
         self._cluster_signals = []
         self._cluster_objs = []
-
         self._long_signal = None
         self._short_signal = None
+        self._selected_long = []        # Indices of clusters with positive expected returns
+        self._selected_short = []       # Indices of clusters with negative expected returns
+        self._selected_neutral = []     # Indices of clusters with zero expected returns
 
-        self._selected_long = []
-        self._selected_short = []
-
+        # Performance analysis
         self._fit_martin = None
         self._perm_martins = []
         
-        self._data = None # Array of log closing prices to mine patterns
+        # Data and returns
+        self._data = None               # Source price data array to mine patterns from
+        self._returns_next_candle = None    # Array of next-candle returns
+        self._returns_fixed_hold = None     # Array of fixed holding period returns
+        self._returns_mfe = None            # Maximum favorable excursion returns
+        self._returns_mae = None            # Maximum adverse excursion returns
+        self._cluster_returns = []          # Mean returns for each cluster
+        self._cluster_mfe = []              # Mean MFE for each cluster
+        self._cluster_mae = []              # Mean MAE for each cluster
+
+    #----------------------------------------------------------------------------------------
+    # Core Pattern Identification Functions
+    #----------------------------------------------------------------------------------------
+
+    def find_pips(self, data: np.array, n_pips: int, dist_measure: int):
+        """
+        Find Perceptually Important Points (PIPs) in a time series.
         
-        self._returns_next_candle = None # Array of next log returns, concurrent with _data
-        self._returns_fixed_hold = None # Array of fixed hold returns, concurrent with _data
-        self._returns_mfe = None # Array of maximum favorable excursion returns, concurrent with _data
-        self._returns_mae = None # Array of maximum adverse excursion returns, concurrent with _data
-        self._cluster_returns = [] # Array of cluster returns
-        self._cluster_mfe = [] # Array of cluster maximum favorable excursion returns
-        self._cluster_mae = [] # Array of cluster maximum adverse excursion returns
-
-    # find pips funtion
-    def find_pips(self,data: np.array, n_pips: int, dist_measure: int):
-        # dist_measure
-        # 1 = Euclidean Distance
-        # 2 = Perpindicular Distance
-        # 3 = Vertical Distance
-
+        Parameters:
+        -----------
+        data : np.array
+            The time series data to analyze
+        n_pips : int
+            Number of PIPs to identify
+        dist_measure : int
+            Distance measure to use:
+            1 = Euclidean Distance
+            2 = Perpendicular Distance
+            3 = Vertical Distance
+            
+        Returns:
+        --------
+        tuple
+            (pips_x, pips_y) where pips_x are the indices and pips_y are the values
+        """
+        # Initialize with first and last point
         pips_x = [0, len(data) - 1]  # Index
         pips_y = [data[0], data[-1]] # Price
 
+        # Add remaining PIPs one by one
         for curr_point in range(2, n_pips):
-
-            md = 0.0 # Max distance
-            md_i = -1 # Max distance index
+            md = 0.0       # Max distance
+            md_i = -1      # Max distance index
             insert_index = -1
 
+            # Check distance between each adjacent pair of existing PIPs
             for k in range(0, curr_point - 1):
-
                 # Left adjacent, right adjacent indices
                 left_adj = k
                 right_adj = k + 1
 
-                time_diff = pips_x[right_adj] - pips_x[left_adj] # Time difference
-                price_diff = pips_y[right_adj] - pips_y[left_adj] # Price difference
-                slope = price_diff / time_diff # Slope
-                intercept = pips_y[left_adj] - pips_x[left_adj] * slope; # y = mx + c
+                # Calculate the line between adjacent PIPs
+                time_diff = pips_x[right_adj] - pips_x[left_adj]   # Time difference
+                price_diff = pips_y[right_adj] - pips_y[left_adj]  # Price difference
+                slope = price_diff / time_diff                     # Slope
+                intercept = pips_y[left_adj] - pips_x[left_adj] * slope  # y = mx + c
 
+                # Find point with maximum distance between the line and all points between adjacent PIPs
                 for i in range(pips_x[left_adj] + 1, pips_x[right_adj]):
                     # Euclidean Distance:
                     # Use when you need the shortest path between two points.
@@ -84,138 +147,86 @@ class Pattern_Miner:
                     # Use when you care only about the vertical difference between a point and a line.
                     # Example: Measuring the error between observed and predicted values in regression analysis.
                     
-                    d = 0.0 # Distance
-                    if dist_measure == 1: # Euclidean distance
-                        d =  ( (pips_x[left_adj] - i) ** 2 + (pips_y[left_adj] - data[i]) ** 2 ) ** 0.5 # Left distance formula : sqrt((x1 - x2)^2 + (y1 - y2)^2)
-                        d += ( (pips_x[right_adj] - i) ** 2 + (pips_y[right_adj] - data[i]) ** 2 ) ** 0.5 # Right distance formula : sqrt((x1 - x2)^2 + (y1 - y2)^2)
-                    elif dist_measure == 2: # Perpindicular distance
-                        d = abs( (slope * i + intercept) - data[i] ) / (slope ** 2 + 1) ** 0.5 # Perpindicular distance formula : |Ax + By + C| / (A^2 + B^2)^0.5
-                    else: # Vertical distance    
-                        d = abs( (slope * i + intercept) - data[i] ) # Vertical distance formula : |Ax + By + C| 
+                    d = 0.0  # Distance
+                    if dist_measure == 1:  # Euclidean distance
+                        d =  ((pips_x[left_adj] - i) ** 2 + (pips_y[left_adj] - data[i]) ** 2) ** 0.5  # Left distance formula : sqrt((x1 - x2)^2 + (y1 - y2)^2)
+                        d += ((pips_x[right_adj] - i) ** 2 + (pips_y[right_adj] - data[i]) ** 2) ** 0.5  # Right distance formula : sqrt((x1 - x2)^2 + (y1 - y2)^2)
+                    elif dist_measure == 2:  # Perpendicular distance
+                        d = abs((slope * i + intercept) - data[i]) / (slope ** 2 + 1) ** 0.5  # Perpendicular distance formula : |Ax + By + C| / (A^2 + B^2)^0.5
+                    else:  # Vertical distance    
+                        d = abs((slope * i + intercept) - data[i])  # Vertical distance formula : |Ax + By + C| 
 
+                    # Keep track of the point with maximum distance
                     if d > md:
                         md = d
                         md_i = i
                         insert_index = right_adj
 
+            # Insert the point with max distance into PIPs
             pips_x.insert(insert_index, md_i)
             pips_y.insert(insert_index, data[md_i])
 
         return pips_x, pips_y
 
-    def get_fit_martin(self):
-        return self._fit_martin
-
-    def get_permutation_martins(self):
-        return self._perm_martins
-
-
-    def predict(self, pips_y: list, current_price: float):
-        norm_y = (np.array(pips_y) - np.mean(pips_y)) / np.std(pips_y)
-
-        # Find cluster
-        best_dist = 1.e30
-        best_clust = -1
-        for clust_i in range(len(self._cluster_centers)):
-            center = np.array(self._cluster_centers[clust_i])
-            dist = np.linalg.norm(norm_y-center)
-            if dist < best_dist:
-                best_dist = dist
-                best_clust = clust_i
-        
-        # get the return of the best cluster
-        best_cluster_return = self._returns[best_clust]
-        # calculate the predicted price
-        predicted_price = current_price + (best_cluster_return * current_price)
-        return predicted_price
-    
-    ##-------------- Functions to calculate the returns of each candle stick in the data --------------##
-    ## ---------------------------------------------------------------------------------- ##
-    # Fixed Holding Period Returns
-    def calculate_returns_fixed_hold(self,data: np.array, pattern_indices: list, hold_period: int) -> np.array:
-        returns = []
-        for idx in pattern_indices:
-            if idx + hold_period < len(data):
-                returns.append((data[idx + hold_period] - data[idx]) / data[idx])
-            else:
-                returns.append(0)  # Not enough future data
-        return np.array(returns)
-    
-    # Maximum Favorable Excursion (MFE) / Maximum Adverse Excursion (MAE)
-    # Definition:
-    # MFE: Best unrealized gain during the trade.
-    # MAE: Worst unrealized loss during the trade.
-    def calculate_mfe_mae(self,data: np.array, pattern_indices: list, hold_period: int) -> tuple:
-        mfe, mae = [], []
-        for idx in pattern_indices:
-            if idx + hold_period < len(data):
-                window = data[idx: idx + hold_period]
-                max_price = np.max(window)
-                min_price = np.min(window)
-                mfe.append((max_price - data[idx]) / data[idx]) # This will return the maximum favorable excursion
-                mae.append((min_price - data[idx]) / data[idx]) # This will return the maximum adverse excursion
-            else:
-                mfe.append(0)
-                mae.append(0)
-        return np.array(mfe), np.array(mae)
-    
-    def train(self, arr: np.array):
-        self._data = arr
-        
-        self._find_unique_patterns()
-        
-        # Calculate the returns of the data
-        self._returns_next_candle = pd.Series(arr).diff().shift(-1) # Calculate the returns of the data
-        self._returns_fixed_hold = self.calculate_returns_fixed_hold(arr, self._unique_pip_indices, self._returns_hold_period) # Calculate the fixed holding period returns
-        self._returns_mfe, self._returns_mae = self.calculate_mfe_mae(arr, self._unique_pip_indices, self._returns_hold_period) # Calculate the MFE and MAE returns
-       
-    
-        search_instance = silhouette_ksearch(
-                self._unique_pip_patterns, 30, 100, algorithm=silhouette_ksearch_type.KMEANS).process()
-        
-        amount = search_instance.get_amount()
-        self._kmeans_cluster_patterns(amount)
-        self._categorize_clusters_by_mean_return()
-        
-
     def _find_unique_patterns(self):
+        """
+        Find unique patterns in the data by identifying PIPs and normalizing them.
+        Stores patterns in internal arrays for later processing.
+        """
         self._unique_pip_indices.clear()
         self._unique_pip_patterns.clear()
-        self._global_pip_indices = []     # New: Store ALL global indices for each pattern
+        self._global_pip_indices = []     # Store ALL global indices for each pattern
         
         last_pips_x = [0] * self._n_pips
+        # Slide window through the data
         for i in range(self._lookback - 1, len(self._data) - self._hold_period):
             start_i = i - self._lookback + 1
             window = self._data[start_i: i + 1]
+            
+            # Find PIPs in this window
             pips_x, pips_y = self.find_pips(window, self._n_pips, 3)
-            global_pips_x = [j + start_i for j in  pips_x]  # Convert to global index by adding start_i to each index inglobal_pips_x list 
+            # Convert to global indices
+            global_pips_x = [j + start_i for j in pips_x]  # Convert to global index
 
-            # Check internal pips to see if it is the same as last
+            # Check if this pattern is the same as the last one
             same = True
             for j in range(1, self._n_pips - 1):
                 if global_pips_x[j] != last_pips_x[j]:
                     same = False
                     break
             
+            # If this is a new pattern, store it
             if not same:
                 data = np.array(pips_y).reshape(-1, 1)
                 # Create scalers
                 minmax_scaler = MinMaxScaler()
                 std_scaler = StandardScaler()
-                # Min-Max normalization to [0, 1]
-                # Fit and transform
+                
+                # Normalize the pattern using min-max scaling
                 normalized = minmax_scaler.fit_transform(data).flatten()
                 standardized = std_scaler.fit_transform(data).flatten()
                 
+                # Store the normalized pattern and its indices
                 self._unique_pip_patterns.append(normalized.tolist())
-                self._unique_pip_indices.append(i) # Append the index of the pattern , this is the index of the last pip in the pattern
-                self._global_pip_indices.append(global_pips_x)  # New: All global PIP indices
+                self._unique_pip_indices.append(i)  # Index of the last point in the pattern
+                self._global_pip_indices.append(global_pips_x)  # All global PIP indices
 
-            last_pips_x =global_pips_x
+            last_pips_x = global_pips_x
 
+    #----------------------------------------------------------------------------------------
+    # Clustering Functions
+    #----------------------------------------------------------------------------------------
 
     def _kmeans_cluster_patterns(self, amount_clusters):
-        # Cluster Patterns
+        """
+        Cluster the patterns using K-means algorithm.
+        
+        Parameters:
+        -----------
+        amount_clusters : int
+            Number of clusters to create
+        """
+        # Initialize cluster centers using k-means++
         initial_centers = kmeans_plusplus_initializer(self._unique_pip_patterns, amount_clusters).initialize()
         kmeans_instance = kmeans(self._unique_pip_patterns, initial_centers)
         kmeans_instance.process()
@@ -223,37 +234,19 @@ class Pattern_Miner:
         # Extract clustering results: clusters and their centers
         self._pip_clusters = kmeans_instance.get_clusters()
         self._cluster_centers = kmeans_instance.get_centers()
-        
-
-    def _get_martin(self, rets: np.array):
-        rsum = np.sum(rets)
-        short = False
-        if rsum < 0.0:
-            rets *= -1
-            rsum *= -1
-            short = True
-
-        csum = np.cumsum(rets)
-        eq = pd.Series(np.exp(csum))
-        sumsq = np.sum( ((eq / eq.cummax()) - 1) ** 2.0 )
-        ulcer_index = (sumsq / len(rets)) ** 0.5
-        martin = rsum / ulcer_index
-        if short:
-            martin = -martin
-
-        return martin
 
     def _categorize_clusters_by_mean_return(self):
-        self._cluster_returns.clear()  # Clear previous returns
-        """Categorizes clusters into long, short, and neutral based on mean returns.
+        """
+        Categorize clusters into long, short, and neutral based on mean returns.
         
         Long clusters: mean return > 0
         Short clusters: mean return < 0
         Neutral clusters: mean return == 0
         """
+        self._cluster_returns.clear()  # Clear previous returns
         self._selected_long = []  # Clear previous selections
         self._selected_short = []
-        self._selected_neutral = []  # New: Stores neutral clusters
+        self._selected_neutral = []  # Stores neutral clusters
         
         for clust_i, clust in enumerate(self._pip_clusters):
             # Get returns for all patterns in this cluster
@@ -264,30 +257,262 @@ class Pattern_Miner:
             mean_mfe = np.mean(mfe)
             mean_mae = np.mean(mae)
             
-            # store the cluster returns
+            # Store the cluster returns
             self._cluster_returns.append(mean_return)
             self._cluster_mfe.append(mean_mfe)
             self._cluster_mae.append(mean_mae)
             
+            # Categorize based on mean return direction
             if mean_return > 0:
                 self._selected_long.append(clust_i)
             elif mean_return < 0:
                 self._selected_short.append(clust_i)
             else:
                 self._selected_neutral.append(clust_i)
+
+    #----------------------------------------------------------------------------------------
+    # Return Calculation Functions
+    #----------------------------------------------------------------------------------------
+    
+    # function to get the maximum patterns count 
+    def get_max_patterns_count(self) -> int:
+        """
+        Get the maximum number of patterns identified.
         
+        Returns:
+        --------
+        int
+            Maximum number of patterns
+        """
+        #loop through the unique patterns and get the maximum count
+        max_count = 0
+        for i in range(len(self._pip_clusters)):
+            if len(self._pip_clusters[i]) > max_count:
+                max_count = len(self._pip_clusters[i])
+        return max_count    
+    
+    # funtion to get the average patterns count
+    def get_avg_patterns_count(self) -> int:
+        """
+        Get the average number of patterns identified.
         
-    def filter_clusters(self,buy_threshold=0.03, sell_threshold=-0.03):
+        Returns:
+        --------
+        int
+            Average number of patterns
+        """
+        #loop through the unique patterns and get the average count
+        avg_count = 0
+        for i in range(len(self._pip_clusters)):
+            avg_count += len(self._pip_clusters[i])
+        return avg_count / len(self._pip_clusters)
+
+    def calculate_returns_fixed_hold(self, data: np.array, pattern_indices: list, hold_period: int) -> np.array:
+        """
+        Calculate returns for a fixed holding period after each pattern.
+        
+        Parameters:
+        -----------
+        data : np.array
+            Price data array
+        pattern_indices : list
+            List of indices where patterns end
+        hold_period : int
+            Number of candles to hold after pattern identification
+            
+        Returns:
+        --------
+        np.array
+            Array of returns for each pattern
+        """
+        returns = []
+        for idx in pattern_indices:
+            if idx + hold_period < len(data):
+                returns.append((data[idx + hold_period] - data[idx]) / data[idx])
+            else:
+                returns.append(0)  # Not enough future data
+        return np.array(returns)
+    
+    def calculate_mfe_mae(self, data: np.array, pattern_indices: list, hold_period: int) -> tuple:
+        """
+        Calculate Maximum Favorable Excursion (MFE) and Maximum Adverse Excursion (MAE).
+        
+        MFE: Best unrealized gain during the trade.
+        MAE: Worst unrealized loss during the trade.
+        
+        Parameters:
+        -----------
+        data : np.array
+            Price data array
+        pattern_indices : list
+            List of indices where patterns end
+        hold_period : int
+            Number of candles to hold after pattern identification
+            
+        Returns:
+        --------
+        tuple
+            (mfe, mae) arrays for each pattern
+        """
+        mfe, mae = [], []
+        for idx in pattern_indices:
+            if idx + hold_period < len(data):
+                window = data[idx: idx + hold_period]
+                max_price = np.max(window)
+                min_price = np.min(window)
+                mfe.append((max_price - data[idx]) / data[idx])  # Maximum favorable excursion
+                mae.append((min_price - data[idx]) / data[idx])  # Maximum adverse excursion
+            else:
+                mfe.append(0)
+                mae.append(0)
+        return np.array(mfe), np.array(mae)
+
+    def _get_martin(self, rets: np.array):
+        """
+        Calculate the Martin ratio (a risk-adjusted return measure).
+        
+        Parameters:
+        -----------
+        rets : np.array
+            Array of returns
+            
+        Returns:
+        --------
+        float
+            Martin ratio
+        """
+        rsum = np.sum(rets)
+        short = False
+        if rsum < 0.0:
+            rets *= -1
+            rsum *= -1
+            short = True
+
+        csum = np.cumsum(rets)
+        eq = pd.Series(np.exp(csum))
+        sumsq = np.sum(((eq / eq.cummax()) - 1) ** 2.0)
+        ulcer_index = (sumsq / len(rets)) ** 0.5
+        martin = rsum / ulcer_index
+        if short:
+            martin = -martin
+
+        return martin
+
+    #----------------------------------------------------------------------------------------
+    # Training and Prediction Functions
+    #----------------------------------------------------------------------------------------
+
+    def train(self, arr: np.array):
+        """
+        Train the pattern miner on a price data array.
+        
+        Parameters:
+        -----------
+        arr : np.array
+            Price data array
+        """
+        self._data = arr
+        
+        # Find patterns
+        self._find_unique_patterns()
+        
+        # Calculate the returns of the data
+        self._returns_next_candle = pd.Series(arr).diff().shift(-1)  # Calculate the returns of the data
+        self._returns_fixed_hold = self.calculate_returns_fixed_hold(arr, self._unique_pip_indices, self._returns_hold_period)  # Calculate the fixed holding period returns
+        self._returns_mfe, self._returns_mae = self.calculate_mfe_mae(arr, self._unique_pip_indices, self._returns_hold_period)  # Calculate the MFE and MAE returns
+       
+        # Fully dynamic cluster range calculation
+        pattern_count = len(self._unique_pip_patterns)
+       
+        # Calculate sqrt(n) as a statistical rule of thumb for initial clustering
+        sqrt_n = int(np.sqrt(pattern_count))
+        
+        # Adaptive min clusters: sqrt(n)/2
+        min_clusters = max(3, int(sqrt_n/2))
+        
+        # Adaptive max clusters: Between sqrt(n)*2 and 20% of patterns
+        max_clusters = min(int(sqrt_n)*2,pattern_count-1)
+        
+        # Ensure min < max and both are within valid range
+        min_clusters = min(min_clusters, pattern_count - 1)
+        max_clusters = min(max_clusters, pattern_count - 1)
+        max_clusters = max(max_clusters, min_clusters + 2)  # Ensure reasonable range
+        
+        # Use silhouette method to find optimal number of clusters
+        search_instance = silhouette_ksearch(
+                self._unique_pip_patterns, min_clusters, max_clusters, algorithm=silhouette_ksearch_type.KMEANS).process()
+        
+        amount = search_instance.get_amount()
+        self._kmeans_cluster_patterns(amount)
+        self._categorize_clusters_by_mean_return()
+        
+        self._max_patterns_count = self.get_max_patterns_count()  # Get the maximum patterns count
+        self._avg_patterns_count = self.get_avg_patterns_count()  # Get the average patterns count
+
+    def predict(self, pips_y: list, current_price: float):
+        """
+        Predict future price based on a pattern.
+        
+        Parameters:
+        -----------
+        pips_y : list
+            List of price points in the pattern
+        current_price : float
+            Current price
+            
+        Returns:
+        --------
+        float
+            Predicted price
+        """
+        norm_y = (np.array(pips_y) - np.mean(pips_y)) / np.std(pips_y)
+
+        # Find the closest cluster
+        best_dist = 1.e30
+        best_clust = -1
+        for clust_i in range(len(self._cluster_centers)):
+            center = np.array(self._cluster_centers[clust_i])
+            dist = np.linalg.norm(norm_y-center)
+            if dist < best_dist:
+                best_dist = dist
+                best_clust = clust_i
+        
+        # Get the return of the best cluster
+        best_cluster_return = self._returns[best_clust]
+        # Calculate the predicted price
+        predicted_price = current_price + (best_cluster_return * current_price)
+        return predicted_price
+
+    #----------------------------------------------------------------------------------------
+    # Evaluation and Analysis Functions
+    #----------------------------------------------------------------------------------------
+
+    def filter_clusters(self, buy_threshold=0.03, sell_threshold=-0.03):
+        """
+        Filter clusters based on return thresholds.
+        
+        Parameters:
+        -----------
+        buy_threshold : float
+            Minimum return threshold for buy clusters
+        sell_threshold : float
+            Maximum return threshold for sell clusters
+            
+        Returns:
+        --------
+        tuple
+            (buy_clusters, sell_clusters) lists of cluster indices
+        """
         buy_clusters = []
         sell_clusters = []
         
-        # filter the long clusters
+        # Filter the long clusters
         for clust_i in self._selected_long:
             mean_return = np.mean(self._returns_fixed_hold[self._pip_clusters[clust_i]])
             if mean_return > buy_threshold:
                 buy_clusters.append(clust_i)
                 
-        # filter the short clusters
+        # Filter the short clusters
         for clust_i in self._selected_short:
             mean_return = np.mean(self._returns_fixed_hold[self._pip_clusters[clust_i]])
             if mean_return < sell_threshold:
@@ -295,8 +520,15 @@ class Pattern_Miner:
         
         return buy_clusters, sell_clusters
 
-    
     def evaluate_clusters(self):
+        """
+        Evaluate the performance of each cluster.
+        
+        Returns:
+        --------
+        list
+            List of dictionaries containing performance metrics for each cluster
+        """
         cluster_metrics = []
         for cluster_i in range(len(self._pip_clusters)):
             cluster_indices = self._pip_clusters[cluster_i]
@@ -323,8 +555,22 @@ class Pattern_Miner:
         
         return cluster_metrics
     
-    
     def backtest(self, buy_clusters, sell_clusters):
+        """
+        Backtest a strategy based on selected clusters.
+        
+        Parameters:
+        -----------
+        buy_clusters : list
+            List of cluster indices to generate buy signals
+        sell_clusters : list
+            List of cluster indices to generate sell signals
+            
+        Returns:
+        --------
+        dict
+            Dictionary containing backtest results
+        """
         signals = np.zeros(len(self._data))
         for cluster_i in buy_clusters:
             for idx in self._pip_clusters[cluster_i]:
@@ -341,7 +587,6 @@ class Pattern_Miner:
         cumulative_returns = np.cumsum(strategy_returns)
         
         # Calculate performance metrics
-        #total_return = cumulative_returns[-1]
         total_return = np.sum(strategy_returns)
         sharpe_ratio = np.mean(strategy_returns) / np.std(strategy_returns) if np.std(strategy_returns) != 0 else 0
         max_drawdown = np.min(cumulative_returns) - np.max(cumulative_returns)
@@ -351,10 +596,33 @@ class Pattern_Miner:
             'sharpe_ratio': sharpe_ratio,
             'max_drawdown': max_drawdown,
             'cumulative_returns': cumulative_returns
-            }
+        }
+
+    #----------------------------------------------------------------------------------------
+    # Getter Methods
+    #----------------------------------------------------------------------------------------
         
-    ### ------------- Plotting Functions ------------- ###
+    def get_fit_martin(self):
+        """Get the Martin ratio for the fitted model."""
+        return self._fit_martin
+
+    def get_permutation_martins(self):
+        """Get the Martin ratios for permutation tests."""
+        return self._perm_martins
+
+    #----------------------------------------------------------------------------------------
+    # Visualization Functions
+    #----------------------------------------------------------------------------------------
+
     def plot_backtest_results(self, cumulative_returns):
+        """
+        Plot the cumulative returns from a backtest.
+        
+        Parameters:
+        -----------
+        cumulative_returns : np.array
+            Array of cumulative returns
+        """
         plt.figure(figsize=(10, 6))
         plt.plot(cumulative_returns, label='Cumulative Returns')
         plt.title('Backtest Results')
@@ -363,8 +631,9 @@ class Pattern_Miner:
         plt.legend()
         plt.grid()
         plt.show()
+        
     def plot_clusters(self):
-        # plot the cluster centers
+        """Plot all cluster centers."""
         plt.figure(figsize=(10, 6))
         for i, center in enumerate(self._cluster_centers):
             plt.plot(center, label=f'Cluster {i+1}', marker='o' if i == 0 else 'x')
@@ -375,9 +644,17 @@ class Pattern_Miner:
         plt.grid()
         plt.show()
         
-    # funtion to print a cluster by its index
     def plot_cluster_by_index(self, index, type):
+        """
+        Plot a specific cluster by its index.
         
+        Parameters:
+        -----------
+        index : int
+            Index of the cluster to plot
+        type : str
+            'buy' or 'sell'
+        """
         plt.plot(self._cluster_centers[index], label=f'Pattern {index+1}', marker='o' if index == 0 else 'x')
         plt.xlabel('Time Steps')
         plt.ylabel('Value')
@@ -392,20 +669,36 @@ class Pattern_Miner:
         plt.show()
         
     def plot_cluster_members(self, cluster_i):
-        # plot each member of the cluster number 1
-        #print("Cluster Members")
-        #print(self._pip_clusters)
+        """
+        Plot all members of a specific cluster.
+        
+        Parameters:
+        -----------
+        cluster_i : int
+            Index of the cluster to plot members for
+        """
         for i in self._pip_clusters[cluster_i]:
-            
             plt.plot(self._unique_pip_patterns[i], label=f'Pattern {i+1}', marker='o' if i == 0 else 'x')
         plt.xlabel('Time Steps')
         plt.ylabel('Value')
-        plt.title('Plot of Cluster 1 Members')
+        plt.title('Plot of Cluster Members')
         plt.legend()
         plt.grid()
         plt.show()
         
     def plot_cluster_examples(self, candle_data: pd.DataFrame, cluster_i: int, grid_size: int = 5):
+        """
+        Plot examples of a cluster using candlestick charts.
+        
+        Parameters:
+        -----------
+        candle_data : pd.DataFrame
+            Candlestick data with OHLC values
+        cluster_i : int
+            Index of the cluster to plot examples for
+        grid_size : int
+            Size of the grid for subplot layout
+        """
         plt.style.use('dark_background')
         fig, axs = plt.subplots(grid_size, grid_size)
         flat_axs = axs.flatten()
@@ -434,20 +727,28 @@ class Pattern_Miner:
 
         fig.suptitle(f"Cluster {cluster_i}", fontsize=32)
         plt.show()
-        
-    # funtion to plot the cluster by the cluster centers as input
+    
     def plot_cluster_by_center(self, center, type):
-       
-        # plot the confidence score label of the cluster of 0.7%
-        plt.plot(0.4, label='Confidence Score: 0.7%', color='green', marker='.')
-        # plot the type label of the cluster ( bullish or bearish )
-        plt.plot(0.4, label='Type: Bullish', color='green', marker='.')
+        """
+        Plot a pattern based on a provided center.
         
-        # plot the maximum expected drawdown of the cluster of 0.7%
+        Parameters:
+        -----------
+        center : list
+            Center coordinates to plot
+        type : str
+            'buy' or 'sell'
+        """
+        # Plot informational labels
+        plt.plot(0.4, label='Confidence Score: 0.7%', color='green', marker='.')
+        plt.plot(0.4, label='Type: Bullish', color='green', marker='.')
         plt.plot(0.4, label='Max Expected Drawdown: - 0.3%', color='red', marker='.')
+        
+        # Plot the pattern
         plt.xlabel('Time Steps')
         plt.ylabel('Value')
         plt.plot(center, label=f'Matched Pattern ID: #1543', marker='o' if 0 == 0 else 'x')
+        
         if type == 'buy':
             plt.title(f'Plot of Cluster Buy')
         else:
@@ -456,36 +757,37 @@ class Pattern_Miner:
         plt.legend()
         plt.grid()
         plt.show()
-    
+
 
 if __name__ == '__main__':
-    data = pd.read_csv('C:/Users/yoonus/Documents/GitHub/Stock_AI_Predictor/Data/Stocks/BTCUSD60.csv')
+    data = pd.read_csv('C:/Users/yoonus/Documents/GitHub/Stock_AI_Predictor/Data/Raw/Stocks/Intraday/60M/BTCUSD60.csv')
     data['Date'] = data['Date'].astype('datetime64[s]')
     data = data.set_index('Date')
-    # trim the data to only include the first 50 data points
+     # trim the data to only include the first 50 data points
     data = data.head(1000)
    
     #data = data[data.index < '01-01-2020']
     arr = data['Close'].to_numpy()
-    
+
     pip_miner = Pattern_Miner(n_pips=5, lookback=24, hold_period=6)
-    #pip_miner.train(arr)
+    pip_miner.train(arr)
     
+    # print max patterns count
+    print(f"Max Patterns Count: {pip_miner._max_patterns_count}")
     
-
-
-    pip_miner.plot_cluster_by_center([0.4,0.9,0.3,0.6,0.2], 'buy')
-    
-    
-  
-
-
-    
-    
+    # plot the clusters
+    pip_miner.plot_clusters()
 
 
 
 
 
-    
+
+
+
+
+
+
+
+
 

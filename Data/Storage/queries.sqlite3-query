@@ -1,0 +1,31 @@
+-- database: ./data.db
+
+
+/* get the number of rows in the table where the stock id is 1 and the timeframe id is 1 */
+
+PRAGMA foreign_keys = OFF;
+
+-- Delete records in the correct order to avoid foreign key violations
+-- Start with patterns (child table)
+DELETE FROM patterns;
+
+-- Then delete from clusters
+DELETE FROM clusters;
+
+-- Finally delete from experiment_configs
+DELETE FROM experiment_configs;
+
+-- Enable foreign key constraints again
+PRAGMA foreign_keys = ON;
+
+-- Verify the tables are empty
+SELECT 'Patterns count:', COUNT(*) FROM patterns;
+SELECT 'Clusters count:', COUNT(*) FROM clusters;
+SELECT 'Experiment_configs count:', COUNT(*) FROM experiment_configs;
+
+/*reset the auto increment of the table*/
+
+DELETE FROM sqlite_sequence WHERE name='experiment_configs';
+DELETE FROM sqlite_sequence WHERE name='performance_metrics';
+DELETE FROM performance_metrics;
+/*reset the auto increment of the table*/
