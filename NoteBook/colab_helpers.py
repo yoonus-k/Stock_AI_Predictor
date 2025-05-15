@@ -3,6 +3,7 @@ import os
 import sys
 import importlib
 import shutil
+import time
 from typing import Optional, Dict, Tuple, List
 
 def setup_colab_environment():
@@ -17,35 +18,41 @@ def setup_colab_environment():
     # Check if we're using Drive or local storage
     using_drive = os.path.exists('/content/drive/MyDrive')
     
+    # Set up standard directories
+    local_db_path = f"{project_root}/Data/Storage/data.db"
+    drive_db_path = f"{drive_root}/Data/Storage/data.db"
+    
+    # Create local directories - these are needed regardless of Drive status
+    os.makedirs(f"{project_root}/Data/Storage", exist_ok=True)
+    os.makedirs(f"{project_root}/Images/ParamTesting", exist_ok=True)
+    os.makedirs(f"{project_root}/docs", exist_ok=True)
+    
     if using_drive:
-        print("Using Google Drive for storage")
+        print("Using Google Drive for storage and backup")
         # Make sure Drive directories exist
         os.makedirs(f"{drive_root}/Data/Storage", exist_ok=True)
         os.makedirs(f"{drive_root}/Images/ParamTesting", exist_ok=True)
         os.makedirs(f"{drive_root}/docs", exist_ok=True)
         
-        # Create the local directories too
-        os.makedirs(f"{project_root}/Data/Storage", exist_ok=True)
-        
         # Check if DB exists in Drive
-        drive_db_path = f"{drive_root}/Data/Storage/data.db"
-        local_db_path = f"{project_root}/Data/Storage/data.db"
-        
         if os.path.exists(drive_db_path):
             print(f"Found database in Drive: {drive_db_path}")
-            # Copy to local if needed
-            if not os.path.exists(local_db_path):
-                print(f"Copying database to local storage...")
-                shutil.copy(drive_db_path, local_db_path)
-            return local_db_path
+            # Always copy a fresh version to local to avoid Drive file locking issues
+            print(f"Copying database to local storage for better performance...")
+            shutil.copy(drive_db_path, local_db_path)
         else:
             print(f"No database found in Drive. Will use local path: {local_db_path}")
-            return local_db_path
+            
+        # Set environment variable for database path
+        os.environ['STOCK_AI_DB_PATH'] = local_db_path
+        
+        # Return local path as SQLite works better with local filesystem
+        return local_db_path
     else:
         print("Google Drive not mounted. Using local storage only.")
-        # Ensure local directory exists
-        os.makedirs(f"{project_root}/Data/Storage", exist_ok=True)
-        return f"{project_root}/Data/Storage/data.db"
+        # Set environment variable for database path
+        os.environ['STOCK_AI_DB_PATH'] = local_db_path
+        return local_db_path
 
 def check_critical_imports():
     """
@@ -135,3 +142,47 @@ def setup_python_path():
         print(f"  {p}")
     
     return project_root in sys.path
+
+def sync_database_to_drive():
+    """
+    Sync the SQLite database from local storage back to Google Drive.
+    Call this function after parameter testing to save results.
+    
+    Returns:
+        bool: True if sync was successful, False otherwise
+    """
+    # Base paths
+    project_root = '/content/Stock_AI_Predictor'
+    drive_root = '/content/drive/MyDrive/Stock_AI_Predictor'
+    
+    # Check if we're using Drive
+    using_drive = os.path.exists('/content/drive/MyDrive')
+    
+    if not using_drive:
+        print("Google Drive not mounted. Cannot sync database.")
+        return False
+    
+    # Set up file paths
+    local_db_path = f"{project_root}/Data/Storage/data.db"
+    drive_db_path = f"{drive_root}/Data/Storage/data.db"
+    
+    # Check if local DB exists
+    if not os.path.exists(local_db_path):
+        print("No local database found. Nothing to sync.")
+        return False
+    
+    try:
+        # Create a backup of the Drive database if it exists
+        if os.path.exists(drive_db_path):
+            backup_path = f"{drive_db_path}.backup_{int(time.time())}"
+            print(f"Creating backup of Drive database at {backup_path}")
+            shutil.copy(drive_db_path, backup_path)
+        
+        # Copy local DB to Drive
+        print(f"Syncing database to Drive: {drive_db_path}")
+        shutil.copy(local_db_path, drive_db_path)
+        print("Database successfully synced to Drive")
+        return True
+    except Exception as e:
+        print(f"Error syncing database to Drive: {e}")
+        return False
