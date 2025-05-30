@@ -82,7 +82,7 @@ def clone_repository():
     """Clone the GitHub repository"""
     print("\n=== Cloning Repository ===\n")
     
-    repo_url = "https://github.com/yoonus/Stock_AI_Predictor.git"
+    repo_url = "https://github.com/yoonus-k/Stock_AI_Predictor.git"
     repo_dir = Path("/kaggle/working/Stock_AI_Predictor")
     
     if repo_dir.exists():
