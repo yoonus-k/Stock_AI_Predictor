@@ -20,10 +20,18 @@ import os
 import sys
 import json
 import numpy as np
+import warnings
+
+# Add a warnings attribute to numpy if it doesn't exist
+if not hasattr(np, 'warnings'):
+    np.warnings = warnings
+
+print("NumPy warnings patch applied successfully")
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
+import sqlite3 as db
 from itertools import product
 from datetime import datetime, timedelta
 import time
@@ -35,7 +43,7 @@ sys.path.append(str(project_root))
 
 # Import custom modules
 from Pattern.pip_pattern_miner import Pattern_Miner
-from Data.Database.db import Database
+
 
 # Parameter ranges to test
 PARAM_RANGES = {
@@ -52,15 +60,24 @@ OUTPUT_DIR = project_root / "Data" / "Utils" / "ParamTesting" / "Results"
 
 class ParameterTester:
     """Class for testing different parameter combinations for pattern mining."""
-    
     def __init__(self, db_path=None):
         """Initialize the parameter tester.
         
         Args:
             db_path: Path to the SQLite database. If None, uses the default connection.
         """
-        self.db = Database()  # Connect to database
+        self.connection = db.connect(db_path, check_same_thread=False)
         self.create_directory_if_not_exists(OUTPUT_DIR)
+        
+        # Enhanced in-memory storage for batch database writes
+        self.cluster_results = {}  # {(stock_id, timeframe_id, config_id): [cluster_metrics]}
+        self.pattern_results = {}  # {(stock_id, timeframe_id, config_id): [(cluster_id, pattern_data)]}
+        self.config_results = {}   # {(stock_id, timeframe_id, n_pips, lookback, hold_period): config_id}
+        self.performance_results = {}  # {(stock_id, timeframe_id, config_id): metrics}
+        
+        # Configuration tracking
+        self.next_config_id = 1
+        self.config_id_map = {}
         
     def create_directory_if_not_exists(self, directory_path):
         """Create directory if it doesn't exist."""
@@ -80,13 +97,13 @@ class ParameterTester:
         if isinstance(stock_identifier, int) or stock_identifier.isdigit():
             # It's an ID
             stock_id = int(stock_identifier)
-            result = self.db.connection.execute(
+            result =self.connection.execute(
                 "SELECT stock_id, symbol FROM stocks WHERE stock_id = ?", 
                 (stock_id,)
             ).fetchone()
         else:
             # It's a symbol
-            result = self.db.connection.execute(
+            result =self.connection.execute(
                 "SELECT stock_id, symbol FROM stocks WHERE symbol LIKE ?", 
                 (f"%{stock_identifier}%",)
             ).fetchone()
@@ -108,13 +125,13 @@ class ParameterTester:
         if isinstance(timeframe_identifier, int) or timeframe_identifier.isdigit():
             # It's an ID
             timeframe_id = int(timeframe_identifier)
-            result = self.db.connection.execute(
+            result =self.connection.execute(
                 "SELECT timeframe_id, minutes, name FROM timeframes WHERE timeframe_id = ?", 
                 (timeframe_id,)
             ).fetchone()
         else:
             # It's a name
-            result = self.db.connection.execute(
+            result =self.connection.execute(
                 "SELECT timeframe_id, minutes, name FROM timeframes WHERE name LIKE ?", 
                 (f"%{timeframe_identifier}%",)
             ).fetchone()
@@ -126,8 +143,8 @@ class ParameterTester:
     
     def get_stocks_and_timeframes(self):
         """Get all stock IDs and timeframe IDs from the database."""
-        stocks = self.db.connection.execute("SELECT stock_id, symbol FROM stocks").fetchall()
-        timeframes = self.db.connection.execute("SELECT timeframe_id, minutes, name FROM timeframes").fetchall()
+        stocks =self.connection.execute("SELECT stock_id, symbol FROM stocks").fetchall()
+        timeframes =self.connection.execute("SELECT timeframe_id, minutes, name FROM timeframes").fetchall()
         
         return stocks, timeframes
     
@@ -141,7 +158,7 @@ class ParameterTester:
         Returns:
             str: Category of the timeframe ('lower', 'medium', 'higher')
         """
-        timeframe_info = self.db.connection.execute(
+        timeframe_info =self.connection.execute(
             "SELECT minutes, name FROM timeframes WHERE timeframe_id = ?", 
             (timeframe_id,)
         ).fetchone()
@@ -188,9 +205,8 @@ class ParameterTester:
             int: Calculated hold period
         """
         return max(3, int(lookback / 4))
-    
     def register_experiment_config(self, stock_id, timeframe_id, n_pips, lookback, hold_period, strategy_type=None):
-        """Register an experiment configuration in the database.
+        """Register an experiment configuration in memory.
         
         Args:
             stock_id: ID of the stock
@@ -210,28 +226,29 @@ class ParameterTester:
         if strategy_type:
             name = f"{name}_{strategy_type}"
         
-        # Check if this config already exists
-        result = self.db.connection.execute(
-            """SELECT config_id FROM experiment_configs 
-               WHERE stock_id = ? AND timeframe_id = ? AND n_pips = ? AND lookback = ? AND 
-               hold_period = ? AND distance_measure = ?""",
-            (stock_id,timeframe_id, n_pips, lookback, hold_period, DISTANCE_MEASURE)
-        ).fetchone()
+        # Check if this config already exists in memory
+        config_key = (stock_id, timeframe_id, n_pips, lookback, hold_period)
+        if config_key in self.config_results:
+            return self.config_results[config_key]
         
-        if result:
-            return result[0]
+        # Create new config in memory
+        config_id = self.next_config_id
+        self.next_config_id += 1
         
-        # Insert new config
-        cursor = self.db.connection.cursor()
-        cursor.execute(
-            """INSERT INTO experiment_configs 
-               (name,stock_id, timeframe_id, n_pips, lookback, hold_period, returns_hold_period, distance_measure, description)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?,?)""",
-            (name,stock_id, timeframe_id, n_pips, lookback, hold_period, hold_period, DISTANCE_MEASURE, description)
-        )
-        self.db.connection.commit()
+        self.config_results[config_key] = config_id
+        self.config_id_map[config_id] = {
+            'name': name,
+            'stock_id': stock_id,
+            'timeframe_id': timeframe_id,
+            'n_pips': n_pips,
+            'lookback': lookback,
+            'hold_period': hold_period,
+            'returns_hold_period': hold_period,
+            'distance_measure': DISTANCE_MEASURE,
+            'description': description
+        }
         
-        return cursor.lastrowid
+        return config_id
     
     def get_stock_data(self, stock_id, timeframe_id, start_date=None, end_date=None):
         """Get stock data for a specific stock and timeframe.
@@ -265,7 +282,7 @@ class ParameterTester:
         query += " ORDER BY timestamp"
         
         # Execute query and fetch data
-        cursor = self.db.connection.cursor()
+        cursor =self.connection.cursor()
         cursor.execute(query, params)
         data = cursor.fetchall()
         
@@ -278,10 +295,9 @@ class ParameterTester:
         df.set_index('timestamp', inplace=True)
         
         return df
-    
     def store_cluster_metrics(self, stock_id, timeframe_id, config_id, pip_miner):
         """
-        Store cluster metrics for evaluation.
+        Store cluster metrics for evaluation in memory.
         
         Args:
             stock_id: ID of the stock
@@ -293,13 +309,20 @@ class ParameterTester:
             list: Metrics for each cluster
         """
         # Get stock symbol and timeframe name for descriptions
-        stock_symbol = self.db.connection.execute(
+        stock_symbol = self.connection.execute(
             "SELECT symbol FROM stocks WHERE stock_id = ?", (stock_id,)
         ).fetchone()[0]
         
-        timeframe_name = self.db.connection.execute(
+        timeframe_name = self.connection.execute(
             "SELECT name FROM timeframes WHERE timeframe_id = ?", (timeframe_id,)
         ).fetchone()[0]
+        
+        # Create key for in-memory storage
+        key = (stock_id, timeframe_id, config_id)
+        
+        # Initialize cluster list if it doesn't exist
+        if key not in self.cluster_results:
+            self.cluster_results[key] = []
         
         # Collect cluster metrics
         cluster_metrics = []
@@ -314,8 +337,7 @@ class ParameterTester:
             # Calculate metrics
             outcomes = pip_miner._returns_fixed_hold[pattern_indices]
            
-            avg_outcome =pip_miner._cluster_returns[i]
-            
+            avg_outcome = pip_miner._cluster_returns[i]
             
             if avg_outcome > 0:
                  label = 'Buy'
@@ -328,9 +350,9 @@ class ParameterTester:
             if label == 'Buy':
                 max_gain = pip_miner._cluster_mfe[i]
                 max_drawdown = pip_miner._cluster_mae[i]
-            elif  label == 'Sell':
+            elif label == 'Sell':
                 max_gain = pip_miner._cluster_mae[i]
-                max_drawdown =pip_miner._cluster_mfe[i]            
+                max_drawdown = pip_miner._cluster_mfe[i]            
             else:
                 max_gain = 0
                 max_drawdown = 0
@@ -376,7 +398,7 @@ class ParameterTester:
             # calculate probability score directionally
             total_patterns = len(outcomes)
             if pattern_count == 0:
-               probability_score_dir =0.5
+                probability_score_dir = 0.5
             
             if label == 'Buy':
                 positive_outcomes = sum(1 for outcome in outcomes if outcome > 0)
@@ -406,55 +428,41 @@ class ParameterTester:
             max_dd_str = f"{max_drawdown:.2f}%" if max_drawdown != 0 else "0.0%"
             rr_ratio_str = f"{reward_risk_ratio:.2f}" if reward_risk_ratio > 0 else "N/A"
             
-            
             cluster_description = (
                 f"Cluster #{i} (Stock ID: {stock_id} - {stock_symbol}) | {pattern_type} | Win Rate: {win_rate:.1f}%\n"
                 f"Performance: Avg. Gain {avg_gain_str} | Max Gain {max_gain_str} | Max DD {max_dd_str} | R/R Ratio: {rr_ratio_str}\n"
                 f"Contains {pattern_count} patterns from {timeframe_name} data"
             )
             
-            # Store cluster in database
-            price_points_json = json.dumps(cluster_center)
+            # Store cluster data in memory
+            price_points_json = json.dumps(cluster_center.tolist() if isinstance(cluster_center, np.ndarray) else cluster_center)
             
-            avg_volume = None
+            cluster_data = {
+                'cluster_id': i,
+                'stock_id': stock_id,
+                'timeframe_id': timeframe_id,
+                'config_id': config_id,
+                'avg_price_points_json': price_points_json,
+                'avg_volume': None,
+                'outcome': avg_outcome,
+                'label': label,
+                'probability_score_dir': probability_score_dir,
+                'probability_score_stat': probability_score_stat,
+                'pattern_count': pattern_count,
+                'max_gain': max_gain,
+                'max_drawdown': max_drawdown,
+                'reward_risk_ratio': reward_risk_ratio,
+                'profit_factor': profit_factor,
+                'description': cluster_description,
+                'created_at': datetime.now()
+            }
             
-            # Check if cluster exists
-            cluster_id_result = self.db.connection.execute(
-                """SELECT cluster_id FROM clusters 
-                   WHERE stock_id = ? AND timeframe_id = ? AND config_id = ? AND 
-                   avg_price_points_json = ?""",
-                (stock_id, timeframe_id, config_id, price_points_json)
-            ).fetchone()
+            # Add to in-memory storage
+            self.cluster_results[key].append(cluster_data)
             
-            if cluster_id_result:
-                cluster_id = cluster_id_result[0]                # Update existing cluster
-                self.db.connection.execute(
-                    """UPDATE clusters SET 
-                       outcome = ?, label = ?, probability_score_stat = ?, probability_score_dir = ?, pattern_count = ?,
-                       max_gain = ?, max_drawdown = ?, reward_risk_ratio = ?, profit_factor = ?, description = ?
-                       WHERE cluster_id = ?""",
-                    (avg_outcome, label, probability_score_stat, probability_score_dir, pattern_count,
-                     max_gain, max_drawdown, reward_risk_ratio, profit_factor, cluster_description,
-                     cluster_id)
-                )
-            else:                # Insert new cluster
-                cursor = self.db.connection.cursor()
-                cursor.execute(
-                    """INSERT INTO clusters 
-                       (cluster_id, stock_id, timeframe_id, config_id, avg_price_points_json,avg_volume, 
-                        outcome, label, probability_score_dir, probability_score_stat, pattern_count,
-                        max_gain, max_drawdown, reward_risk_ratio, profit_factor, description,
-                        created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?, ?, ?, ?, ?, ?, ?)""",
-                    (i, stock_id, timeframe_id, config_id, price_points_json,avg_volume,
-                     avg_outcome, label, probability_score_dir, probability_score_stat, pattern_count,
-                     max_gain, max_drawdown, reward_risk_ratio, profit_factor, cluster_description,
-                     datetime.now())
-                )
-                cluster_id = cursor.lastrowid
-              # Store metrics for return
+            # Store metrics for return
             cluster_metrics.append({
-                'cluster_id': cluster_id,
+                'cluster_id': i,
                 'pattern_count': pattern_count,
                 'outcome': avg_outcome,
                 'max_gain': max_gain,
@@ -466,12 +474,10 @@ class ParameterTester:
                 'description': cluster_description
             })
         
-        self.db.connection.commit()
         return cluster_metrics
-    
     def store_patterns(self, stock_id, timeframe_id, config_id, pip_miner):
         """
-        Store patterns identified by the pip_miner.
+        Store patterns identified by the pip_miner in memory.
         
         Args:
             stock_id: ID of the stock
@@ -479,16 +485,20 @@ class ParameterTester:
             config_id: ID of the configuration
             pip_miner: Trained Pattern_Miner instance
         """
-        cursor = self.db.connection.cursor()
+        # Create key for in-memory storage
+        key = (stock_id, timeframe_id, config_id)
+        
+        # Initialize pattern list if it doesn't exist
+        if key not in self.pattern_results:
+            self.pattern_results[key] = []
         
         # loop through the clusters
         for j, cluster in enumerate(pip_miner._pip_clusters):
-           
             # loop through the patterns in the cluster
             for i, pattern_id in enumerate(cluster):
                 pattern = pip_miner._unique_pip_patterns[pattern_id]
                 
-                # Store pattern
+                # Prepare pattern data
                 pattern_json = json.dumps(pattern)
                 outcome = pip_miner._returns_fixed_hold[pattern_id]
                 
@@ -501,45 +511,39 @@ class ParameterTester:
                     
                 # Calculate max gain and drawdown based on pattern label
                 if pattern_label == 'Buy':
-                    max_gain = pip_miner._returns_mfe[i]
-                    max_drawdown = pip_miner._returns_mae[i]
+                    max_gain = pip_miner._returns_mfe[i] if i < len(pip_miner._returns_mfe) else 0
+                    max_drawdown = pip_miner._returns_mae[i] if i < len(pip_miner._returns_mae) else 0
                 elif pattern_label == 'Sell':
-                    max_gain = pip_miner._returns_mae[i]
-                    max_drawdown = pip_miner._returns_mfe[i]
+                    max_gain = pip_miner._returns_mae[i] if i < len(pip_miner._returns_mae) else 0
+                    max_drawdown = pip_miner._returns_mfe[i] if i < len(pip_miner._returns_mfe) else 0
                 else:
                     max_gain = 0
                     max_drawdown = 0
                 
-               
+                # Store volume data if available
+                volume_data = None
+                # if hasattr(pip_miner, '_volume_data') and pip_miner._volume_data is not None:
+                #     volume_data = json.dumps(pip_miner._volume_data[i].tolist())
                 
-                # Check if pattern exists
-                pattern_exists = self.db.connection.execute(
-                    """SELECT pattern_id FROM patterns 
-                    WHERE stock_id = ? AND timeframe_id = ? AND config_id = ? AND 
-                    price_points_json = ?""",
-                    (stock_id, timeframe_id, config_id, pattern_json)
-                ).fetchone()
+                # Store pattern in memory
+                pattern_data = {
+                    'pattern_id': pattern_id,
+                    'stock_id': stock_id,
+                    'timeframe_id': timeframe_id,
+                    'config_id': config_id,
+                    'cluster_id': j,
+                    'price_points_json': pattern_json,
+                    'volume': volume_data,
+                    'outcome': outcome,
+                    'max_gain': max_gain,
+                    'max_drawdown': max_drawdown
+                }
                 
-                if not pattern_exists:
-                    # Store volume data if available
-                    volume_data = None
-                    # if hasattr(pip_miner, '_volume_data') and pip_miner._volume_data is not None:
-                    #     volume_data = json.dumps(pip_miner._volume_data[i].tolist())
-                    
-                    cursor.execute(
-                        """INSERT INTO patterns 
-                        (pattern_id,stock_id, timeframe_id, config_id, cluster_id, price_points_json,
-                            volume, outcome, max_gain, max_drawdown)
-                        VALUES (?, ?,?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (pattern_id,stock_id, timeframe_id, config_id, j, pattern_json,
-                        volume_data, outcome, max_gain, max_drawdown)
-                    )
-        
-        self.db.connection.commit()
-    
+                # Add to in-memory storage
+                self.pattern_results[key].append(pattern_data)
     def store_performance_metrics(self, stock_id, timeframe_id, config_id, results, start_date, end_date):
         """
-        Store aggregate performance metrics for a parameter combination.
+        Store aggregate performance metrics for a parameter combination in memory.
         
         Args:
             stock_id: ID of the stock
@@ -553,44 +557,28 @@ class ParameterTester:
         start_date_str = start_date.strftime('%Y-%m-%d') if isinstance(start_date, datetime) else start_date
         end_date_str = end_date.strftime('%Y-%m-%d') if isinstance(end_date, datetime) else end_date
         
-        # Check if metrics exist
-        metrics_exist = self.db.connection.execute(
-            """SELECT metric_id FROM performance_metrics 
-               WHERE stock_id = ? AND timeframe_id = ? AND config_id = ? AND
-               start_date = ? AND end_date = ?""",
-            (stock_id, timeframe_id, config_id, start_date_str, end_date_str)
-        ).fetchone()
+        # Create key for in-memory storage
+        key = (stock_id, timeframe_id, config_id)
         
-        if metrics_exist:
-            # Update existing metrics
-            self.db.connection.execute(
-                """UPDATE performance_metrics SET
-                   total_trades = ?, win_count = ?, loss_count = ?, win_rate = ?,
-                   avg_win = ?, avg_loss = ?, profit_factor = ?, max_drawdown = ?
-                   WHERE stock_id = ? AND timeframe_id = ? AND config_id = ? AND
-                   start_date = ? AND end_date = ?""",
-                (results.get('total_trades', 0), results.get('win_count', 0), 
-                 results.get('loss_count', 0), results.get('win_rate', 0),
-                 results.get('avg_win', 0), results.get('avg_loss', 0),
-                 results.get('profit_factor', 0), results.get('max_drawdown', 0),
-                 stock_id, timeframe_id, config_id, start_date_str, end_date_str)
-            )
-        else:
-            # Insert new metrics
-            self.db.connection.execute(
-                """INSERT INTO performance_metrics
-                   (stock_id, timeframe_id, config_id, start_date, end_date,
-                    total_trades, win_count, loss_count, win_rate,
-                    avg_win, avg_loss, profit_factor, max_drawdown)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (stock_id, timeframe_id, config_id, start_date_str, end_date_str,
-                 results.get('total_trades', 0), results.get('win_count', 0), 
-                 results.get('loss_count', 0), results.get('win_rate', 0),
-                 results.get('avg_win', 0), results.get('avg_loss', 0),
-                 results.get('profit_factor', 0), results.get('max_drawdown', 0))
-            )
+        # Store performance data in memory
+        performance_data = {
+            'stock_id': stock_id,
+            'timeframe_id': timeframe_id,
+            'config_id': config_id,
+            'start_date': start_date_str,
+            'end_date': end_date_str,
+            'total_trades': results.get('total_trades', 0),
+            'win_count': results.get('win_count', 0),
+            'loss_count': results.get('loss_count', 0),
+            'win_rate': results.get('win_rate', 0),
+            'avg_win': results.get('avg_win', 0),
+            'avg_loss': results.get('avg_loss', 0),
+            'profit_factor': results.get('profit_factor', 0),
+            'max_drawdown': results.get('max_drawdown', 0)
+        }
         
-        self.db.connection.commit()
+        # Update or add performance metrics
+        self.performance_results[key] = performance_data
     
     def calculate_weighted_score(self, metrics):
         """
@@ -640,9 +628,9 @@ class ParameterTester:
             return np.average([cluster_scores[i] for i in top_indices], weights=weights)
         else:
             return np.mean(cluster_scores) if cluster_scores else 0
-    
     def run_parameter_test(self, stock_id, timeframe_id, start_date=None, end_date=None, 
-                          hold_period_strategy="timeframe", test_all=False, single_test=False):
+                          hold_period_strategy="timeframe", test_all=False, single_test=False,
+                          save_to_db=True):
         """Run parameter testing for a specific stock and timeframe.
         
         Args:
@@ -653,6 +641,7 @@ class ParameterTester:
             hold_period_strategy: Strategy for hold period determination ('timeframe', 'formula')
             test_all: If True, tests all parameter combinations. If False, tests a subset.
             single_test: If True, tests only one combination for testing functionality.
+            save_to_db: If True, saves results to database after completion.
             
         Returns:
             results: DataFrame containing test results
@@ -721,7 +710,7 @@ class ParameterTester:
                  f"distance_measure={DISTANCE_MEASURE}")
             
             try:
-                # Register this configuration
+                # Register this configuration in memory
                 config_id = self.register_experiment_config(
                     stock_id, timeframe_id, n_pips, lookback, hold_period, hold_period_strategy
                 )
@@ -738,7 +727,7 @@ class ParameterTester:
                 pip_miner.train(train_data)
                 training_time = time.time() - start_time
                 
-                # Store patterns and clusters
+                # Store patterns and clusters in memory
                 cluster_metrics = self.store_cluster_metrics(stock_id, timeframe_id, config_id, pip_miner)
                 self.store_patterns(stock_id, timeframe_id, config_id, pip_miner)
                 
@@ -759,7 +748,7 @@ class ParameterTester:
                 avg_profit_factor = np.mean([m['profit_factor'] for m in cluster_metrics]) if cluster_metrics else 0
                 avg_reward_risk = np.mean([m['reward_risk_ratio'] for m in cluster_metrics]) if cluster_metrics else 0
                 
-                # Store performance metrics
+                # Store performance metrics in memory
                 perf_metrics = {
                     'total_trades': total_patterns,
                     'win_count': sum(m['pattern_count'] for m in bullish_clusters),
@@ -771,7 +760,7 @@ class ParameterTester:
                     'max_drawdown': min([m['max_drawdown'] for m in cluster_metrics]) if cluster_metrics else 0
                 }
                 
-                # Store in database
+                # Store performance metrics in memory
                 self.store_performance_metrics(
                     stock_id, timeframe_id, config_id, perf_metrics,
                     df.index[0], df.index[-1]
@@ -804,10 +793,128 @@ class ParameterTester:
             except Exception as e:
                 print(f"  Error testing parameters: {e}")
         
+        # Save all data to database if requested
+        if save_to_db:
+            self.save_all_to_database()
+            self.clear_memory_storage()  # Free up memory after saving
+        
         if results:
             return pd.DataFrame(results)
         else:
             return None
+    def save_all_to_database(self):
+        """Save all in-memory data to the database in batch operations."""
+        print("Saving all data to database...")
+        
+        try:
+            # Begin transaction
+            self.connection.execute("BEGIN TRANSACTION")
+            
+            # Insert experiment configs in batch
+            print(f"Saving {len(self.config_id_map)} configurations to database...")
+            config_params = [
+                (config_id, data['name'], data['stock_id'], data['timeframe_id'], 
+                 data['n_pips'], data['lookback'], data['hold_period'],
+                 data['returns_hold_period'], data['distance_measure'], data['description'])
+                for config_id, data in self.config_id_map.items()
+            ]
+            
+            self.connection.executemany(
+                """INSERT OR IGNORE INTO experiment_configs 
+                   (config_id, name, stock_id, timeframe_id, n_pips, lookback, hold_period, 
+                   returns_hold_period, distance_measure, description)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                config_params
+            )
+            
+            # Insert clusters in batch
+            print(f"Saving clusters from {len(self.cluster_results)} configurations to database...")
+            all_clusters = []
+            for key, clusters in self.cluster_results.items():
+                for cluster in clusters:
+                    all_clusters.append((
+                        cluster['cluster_id'], cluster['stock_id'], cluster['timeframe_id'],
+                        cluster['config_id'], cluster['avg_price_points_json'], cluster['avg_volume'],
+                        cluster['outcome'], cluster['label'], cluster['probability_score_dir'],
+                        cluster['probability_score_stat'], cluster['pattern_count'],
+                        cluster['max_gain'], cluster['max_drawdown'], cluster['reward_risk_ratio'],
+                        cluster['profit_factor'], cluster['description'], cluster['created_at']
+                    ))
+            
+            # Process clusters in batches to avoid SQLite limitations
+            batch_size = 500
+            total_clusters = len(all_clusters)
+            for i in range(0, total_clusters, batch_size):
+                batch = all_clusters[i:i+batch_size]
+                self.connection.executemany(
+                    """INSERT OR IGNORE INTO clusters 
+                       (cluster_id, stock_id, timeframe_id, config_id, avg_price_points_json, avg_volume, 
+                        outcome, label, probability_score_dir, probability_score_stat, pattern_count,
+                        max_gain, max_drawdown, reward_risk_ratio, profit_factor, description,
+                        created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    batch
+                )
+                print(f"  Saved {min(i+batch_size, total_clusters)}/{total_clusters} clusters")
+            
+            # Insert patterns in batch - largest data volume
+            print(f"Saving patterns from {len(self.pattern_results)} configurations to database...")
+            pattern_count = 0
+            for key, patterns in self.pattern_results.items():
+                pattern_count += len(patterns)
+                # Process patterns in batches to avoid SQLite limitations
+                for i in range(0, len(patterns), batch_size):
+                    batch = [
+                        (p['pattern_id'], p['stock_id'], p['timeframe_id'], p['config_id'], 
+                         p['cluster_id'], p['price_points_json'], p['volume'], 
+                         p['outcome'], p['max_gain'], p['max_drawdown'])
+                        for p in patterns[i:i+batch_size]
+                    ]
+                    self.connection.executemany(
+                        """INSERT OR IGNORE INTO patterns 
+                           (pattern_id, stock_id, timeframe_id, config_id, cluster_id, price_points_json,
+                            volume, outcome, max_gain, max_drawdown)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        batch
+                    )
+                print(f"  Saved {len(patterns)} patterns for configuration {key}")
+            print(f"Total patterns saved: {pattern_count}")
+            
+            # Insert performance metrics
+            print(f"Saving {len(self.performance_results)} performance metrics to database...")
+            perf_params = [
+                (m['stock_id'], m['timeframe_id'], m['config_id'], m['start_date'], m['end_date'], 
+                 m['total_trades'], m['win_count'], m['loss_count'], m['win_rate'],
+                 m['avg_win'], m['avg_loss'], m['profit_factor'], m['max_drawdown'])
+                for m in self.performance_results.values()
+            ]
+            
+            self.connection.executemany(
+                """INSERT OR IGNORE INTO performance_metrics
+                   (stock_id, timeframe_id, config_id, start_date, end_date,
+                    total_trades, win_count, loss_count, win_rate,
+                    avg_win, avg_loss, profit_factor, max_drawdown)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                perf_params
+            )
+            
+            # Commit all changes
+            self.connection.commit()
+            print("All data saved to database successfully!")
+            
+        except Exception as e:
+            # Rollback in case of error
+            self.connection.rollback()
+            print(f"Error saving to database: {e}")
+            raise
+        
+    def clear_memory_storage(self):
+        """Clear in-memory storage to free up memory."""
+        self.cluster_results = {}
+        self.pattern_results = {}
+        self.config_results = {}
+        self.performance_results = {}
+        self.config_id_map = {}
     
     def plot_results(self, results_df, stock_symbol, timeframe_name):
         """Plot parameter testing results."""
@@ -1032,8 +1139,7 @@ class ParameterTester:
         
         # Also save the raw results
         results_df.to_csv(OUTPUT_DIR / f"param_test_data_{stock_symbol}_{timeframe_name}.csv", index=False)
-    
-    def run_quick_test(self, stock_identifier, timeframe_identifier, start_date=None, end_date=None):
+    def run_quick_test(self, stock_identifier, timeframe_identifier, start_date=None, end_date=None, save_to_db=True):
         """
         Run a quick test with a single parameter combination.
         
@@ -1042,6 +1148,7 @@ class ParameterTester:
             timeframe_identifier: Timeframe ID or name
             start_date: Start date for data retrieval (optional)
             end_date: End date for data retrieval (optional)
+            save_to_db: If True, saves results to database after completion
         """
         try:
             # Get stock and timeframe
@@ -1053,7 +1160,8 @@ class ParameterTester:
             # Run single test
             results = self.run_parameter_test(
                 stock_id, timeframe_id, start_date, end_date,
-                hold_period_strategy="timeframe", test_all=False, single_test=True
+                hold_period_strategy="timeframe", test_all=False, single_test=True,
+                save_to_db=save_to_db
             )
             
             if results is not None and not results.empty:
@@ -1072,27 +1180,30 @@ class ParameterTester:
         except Exception as e:
             print(f"Error in quick test: {e}")
             return False
-    def run_quick_test_all(self, stock_identifier, timeframe_identifier, start_date=None, end_date=None):
+            
+    def run_quick_test_all(self, stock_identifier, timeframe_identifier, start_date=None, end_date=None, save_to_db=True):
         """
-        Run a quick test with a single parameter combination.
+        Run a test with all parameter combinations.
         
         Args:
             stock_identifier: Stock ID or symbol
             timeframe_identifier: Timeframe ID or name
             start_date: Start date for data retrieval (optional)
             end_date: End date for data retrieval (optional)
+            save_to_db: If True, saves results to database after completion
         """
         try:
             # Get stock and timeframe
             stock_id, stock_symbol = self.get_stock_by_symbol_or_id(stock_identifier)
             timeframe_id, minutes, timeframe_name = self.get_timeframe_by_name_or_id(timeframe_identifier)
             
-            print(f"Running quick test for {stock_symbol} on {timeframe_name} timeframe")
+            print(f"Running test with all parameters for {stock_symbol} on {timeframe_name} timeframe")
             
-            # Run single test
+            # Run all test combinations
             results = self.run_parameter_test(
                 stock_id, timeframe_id, start_date, end_date,
-                hold_period_strategy="timeframe", test_all=True, single_test=False
+                hold_period_strategy="timeframe", test_all=True, single_test=False,
+                save_to_db=save_to_db
             )
             
             if results is not None and not results.empty:
@@ -1102,18 +1213,17 @@ class ParameterTester:
                 # Generate report
                 self.generate_report(results, stock_id, stock_symbol, timeframe_id, timeframe_name)
                 
-                print(f"Quick test completed for {stock_symbol} on {timeframe_name}")
+                print(f"Test completed for {stock_symbol} on {timeframe_name}")
                 return True
             else:
-                print(f"Quick test failed - no results returned")
+                print(f"Test failed - no results returned")
                 return False
             
         except Exception as e:
-            print(f"Error in quick test: {e}")
+            print(f"Error in test: {e}")
             return False
-    
     def run_all_tests(self, stock_identifier=None, test_all_params=False, hold_period_strategy="timeframe",
-                     start_date=None, end_date=None):
+                     start_date=None, end_date=None, save_to_db=True):
         """Run parameter tests for all stocks and timeframes or a specific stock.
         
         Args:
@@ -1122,6 +1232,7 @@ class ParameterTester:
             hold_period_strategy: Strategy for hold period determination ('timeframe', 'formula')
             start_date: Start date for data retrieval (optional)
             end_date: End date for data retrieval (optional)
+            save_to_db: If True, saves all results to database at once after completion
         """
         if stock_identifier:
             # Get stock info
@@ -1134,6 +1245,9 @@ class ParameterTester:
         # Get all timeframes
         _, timeframes = self.get_stocks_and_timeframes()
         
+        # Turn off auto-save if we're planning to save everything at once
+        save_individual_runs = False if save_to_db else True
+        
         for stock_id, stock_symbol in stocks:
             for timeframe_id, minutes, timeframe_name in timeframes:
                 print(f"\nTesting {stock_symbol} on {timeframe_name} timeframe")
@@ -1141,7 +1255,8 @@ class ParameterTester:
                 try:
                     results = self.run_parameter_test(
                         stock_id, timeframe_id, start_date, end_date,
-                        hold_period_strategy, test_all=test_all_params
+                        hold_period_strategy, test_all=test_all_params,
+                        save_to_db=save_individual_runs
                     )
                     
                     if results is not None and not results.empty:
@@ -1157,6 +1272,12 @@ class ParameterTester:
                 except Exception as e:
                     print(f"Error testing {stock_symbol} on {timeframe_name}: {e}")
         
+        # Save all results to database at once if requested
+        if save_to_db:
+            print("\nSaving all results to database...")
+            self.save_all_to_database()
+            self.clear_memory_storage()
+            
         print("\nAll parameter tests completed")
     
     def compare_hold_period_strategies(self, stock_identifier=None):
@@ -1174,7 +1295,7 @@ class ParameterTester:
             stock_symbol = "All Stocks"
         
         # Query the database for results from both strategies
-        results = self.db.connection.execute(f"""
+        results =self.connection.execute(f"""
             SELECT 
                 s.symbol as stock_symbol,
                 t.name as timeframe_name,
@@ -1276,9 +1397,16 @@ class ParameterTester:
         plt.close()
     
     def close(self):
+        """Close the database connection."""
+        if self.connection:
+            self.connection.close()
+            print("Database connection closed.")
+    
+    def close(self):
         """Close database connection."""
-        if hasattr(self, 'db') and self.db is not None:
-            self.db.close()
+        if self.connection:
+            self.connection.close()
+            print(f"Closed connection to database")
 
 def main():
     """Main function."""
@@ -1356,6 +1484,19 @@ def main():
 
 if __name__ == "__main__":
     # sys.exit(main())
-    tester = ParameterTester()
-    #tester.run_quick_test(stock_identifier=1, timeframe_identifier=3, start_date="2025-02-09", end_date="2025-05-09")
-    tester.run_quick_test_all(stock_identifier=1, timeframe_identifier=5, start_date="2025-02-09", end_date="2025-03-09")
+    try:
+        tester = ParameterTester(db_path="./Data/Storage/data.db")
+        
+        # Examples of using in-memory approach:
+        # Single parameter test
+        # tester.run_quick_test(stock_identifier=1, timeframe_identifier=3, start_date="2025-02-09", end_date="2025-05-09")
+        
+        # Test all parameter combinations
+        tester.run_quick_test_all(stock_identifier=1, timeframe_identifier=4, start_date="2024-01-01", end_date="2025-01-01")
+        
+        # Test across multiple stocks/timeframes and save all at once
+        # tester.run_all_tests(stock_identifier=1, test_all_params=False, hold_period_strategy="timeframe",
+        #                     start_date="2024-01-01", end_date="2025-01-01", save_to_db=True)
+    finally:
+        if 'tester' in locals():
+            tester.close()

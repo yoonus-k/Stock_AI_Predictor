@@ -1,8 +1,6 @@
--- database: ./data.db
-
+-- database: c:\Users\yoonus\Documents\GitHub\Stock_AI_Predictor\Data\Storage\data.db
 
 /* get the number of rows in the table where the stock id is 1 and the timeframe id is 1 */
-
 PRAGMA foreign_keys = OFF;
 
 -- Delete records in the correct order to avoid foreign key violations
@@ -29,3 +27,5 @@ DELETE FROM sqlite_sequence WHERE name='experiment_configs';
 DELETE FROM sqlite_sequence WHERE name='performance_metrics';
 DELETE FROM performance_metrics;
 /*reset the auto increment of the table*/
+
+Delete FROM stocks where stock_id >5;

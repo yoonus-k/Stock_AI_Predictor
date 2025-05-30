@@ -20,25 +20,41 @@ import pandas as pd
 from enum import Enum
 
 
-class RecognitionTechnique(Enum):
-    """Enumeration of available pattern recognition techniques."""
+# Recognition technique constants
+class RecognitionTechnique:
+    """Simple class with constants for available pattern recognition techniques."""
     SVM = "svm"
     RANDOM_FOREST = "random_forest"
     COMBINED = "combined"
     DISTANCE_BASED = "distance_based"
     
     @classmethod
-    def from_string(cls, technique: str) -> 'RecognitionTechnique':
-        """Convert string to enum value, case-insensitive."""
-        technique = technique.lower().replace(" ", "_")
-        for t in cls:
-            if t.value == technique:
-                return t
+    def valid_techniques(cls):
+        """Return a list of valid recognition techniques."""
+        return [cls.SVM, cls.RANDOM_FOREST, cls.COMBINED, cls.DISTANCE_BASED]
+    
+    @classmethod
+    def from_string(cls, technique: str) -> str:
+        """Convert string to standard technique string, case-insensitive."""
+        if technique is None:
+            return cls.SVM  # Default
+            
+        technique = str(technique).lower().replace(" ", "_")
+        if technique in cls.valid_techniques():
+            return technique
         raise ValueError(f"Unknown recognition technique: {technique}")
+        
+    @classmethod
+    def to_display_string(cls, technique: str) -> str:
+        """Convert technique string to display format."""
+        if technique is None:
+            return "SVM"
+        return str(technique).replace("_", " ").title()
 
 
-class ExitStrategy(Enum):
-    """Enumeration of available trade exit strategies."""
+# Exit strategy constants
+class ExitStrategy:
+    """Simple class with constants for available trade exit strategies."""
     PATTERN_BASED = "pattern_based"  # Use pattern's historical max gain/drawdown
     FIXED = "fixed"                  # Use fixed take profit/stop loss
     TRAILING = "trailing"            # Use trailing stop loss
@@ -46,13 +62,27 @@ class ExitStrategy(Enum):
     DUAL = "dual"                    # Combination of time and price-based exits
     
     @classmethod
-    def from_string(cls, strategy: str) -> 'ExitStrategy':
-        """Convert string to enum value, case-insensitive."""
-        strategy = strategy.lower().replace(" ", "_")
-        for s in cls:
-            if s.value == strategy:
-                return s
+    def valid_strategies(cls):
+        """Return a list of valid exit strategies."""
+        return [cls.PATTERN_BASED, cls.FIXED, cls.TRAILING, cls.TIME_BASED, cls.DUAL]
+    
+    @classmethod
+    def from_string(cls, strategy: str) -> str:
+        """Convert string to standard strategy string, case-insensitive."""
+        if strategy is None:
+            return cls.PATTERN_BASED  # Default
+            
+        strategy = str(strategy).lower().replace(" ", "_")
+        if strategy in cls.valid_strategies():
+            return strategy
         raise ValueError(f"Unknown exit strategy: {strategy}")
+        
+    @classmethod
+    def to_display_string(cls, strategy: str) -> str:
+        """Convert strategy string to display format."""
+        if strategy is None:
+            return "Pattern Based"
+        return str(strategy).replace("_", " ").title()
 
 
 @dataclass
@@ -67,19 +97,19 @@ class BacktestConfig:
     test_end: pd.Timestamp
     
     # Pattern recognition parameters
-    recognition_technique: RecognitionTechnique
+    recognition_technique: str
     n_pips: int = 5
     lookback: int = 24
     hold_period: int = 6
     returns_hold_period: int = 12
-    distance_measure: int = 3
+    distance_measure: int = 2
     mse_threshold: float = 0.03
     
     # Model specific parameters
     model_params: Dict[str, Any] = None
     
     # Trade execution parameters
-    exit_strategy: ExitStrategy = ExitStrategy.PATTERN_BASED
+    exit_strategy: str = ExitStrategy.PATTERN_BASED
     fixed_tp_pct: Optional[float] = None
     fixed_sl_pct: Optional[float] = None
     trailing_sl_pct: Optional[float] = None
@@ -87,43 +117,63 @@ class BacktestConfig:
     reward_risk_min: float = 1.0
     
     # Additional configuration
+    config_id: Optional[int] = None
     config_name: str = "default"
-    description: str = ""
-    
+    description: str = ""    
     def __post_init__(self):
         """Validate configuration after initialization."""
         # Ensure model_params is a dictionary
         if self.model_params is None:
             self.model_params = self._get_default_model_params()
         
-        # Validate exit strategy parameters
-        self._validate_exit_strategy()
-        
-        # Convert recognition_technique to enum if it's a string
-        if isinstance(self.recognition_technique, str):
+        # Handle recognition_technique conversion
+        if hasattr(self.recognition_technique, '__class__') and self.recognition_technique.__class__.__name__ == 'Series':
+            # Extract the first value if it's a Series
+            recognition_str = self.recognition_technique.iloc[0] if len(self.recognition_technique) > 0 else None
+            self.recognition_technique = RecognitionTechnique.from_string(recognition_str)
+        elif isinstance(self.recognition_technique, str) or self.recognition_technique is None:
             self.recognition_technique = RecognitionTechnique.from_string(self.recognition_technique)
-            
-        # Convert exit_strategy to enum if it's a string
-        if isinstance(self.exit_strategy, str):
+        
+        # Handle exit_strategy conversion
+        if hasattr(self.exit_strategy, '__class__') and self.exit_strategy.__class__.__name__ == 'Series':
+            # Extract the first value if it's a Series
+            exit_str = self.exit_strategy.iloc[0] if len(self.exit_strategy) > 0 else None
+            self.exit_strategy = ExitStrategy.from_string(exit_str)
+        elif isinstance(self.exit_strategy, str) or self.exit_strategy is None:
             self.exit_strategy = ExitStrategy.from_string(self.exit_strategy)
-    
+            
+        # Validate exit strategy parameters
+        self._validate_exit_strategy()    
     def _get_default_model_params(self) -> Dict[str, Any]:
         """Get default model parameters based on recognition technique."""
-        if self.recognition_technique == RecognitionTechnique.SVM:
+        # Handle if recognition_technique is a pandas Series
+        if hasattr(self.recognition_technique, '__class__') and self.recognition_technique.__class__.__name__ == 'Series':
+            # Extract the first value if it's a Series
+            recognition_technique = self.recognition_technique.iloc[0] if len(self.recognition_technique) > 0 else None
+            # Convert to standard string
+            if recognition_technique is not None:
+                recognition_technique = RecognitionTechnique.from_string(recognition_technique)
+            else:
+                # Default to SVM if we can't determine the type
+                recognition_technique = RecognitionTechnique.SVM
+        else:
+            recognition_technique = self.recognition_technique
+        
+        if recognition_technique == RecognitionTechnique.SVM:
             return {
                 'kernel': 'rbf',
                 'C': 1.0,
                 'gamma': 'scale',
                 'probability': True
             }
-        elif self.recognition_technique == RecognitionTechnique.RANDOM_FOREST:
+        elif recognition_technique == RecognitionTechnique.RANDOM_FOREST:
             return {
                 'n_estimators': 100,
                 'max_depth': None,
                 'min_samples_split': 2,
                 'random_state': 42
             }
-        elif self.recognition_technique == RecognitionTechnique.COMBINED:
+        elif recognition_technique == RecognitionTechnique.COMBINED:
             return {
                 'svm': {
                     'kernel': 'rbf',
@@ -139,52 +189,88 @@ class BacktestConfig:
                 },
                 'voting_weights': [0.5, 0.5]  # Weights for SVM and RF
             }
-        elif self.recognition_technique == RecognitionTechnique.DISTANCE_BASED:
+        elif recognition_technique == RecognitionTechnique.DISTANCE_BASED:
             return {
                 'distance_metric': 'euclidean',
                 'max_distance': 0.2,
                 'min_similarity': 0.7
             }
-        return {}
-    
+        return {}    
     def _validate_exit_strategy(self):
         """Validate that the exit strategy has required parameters."""
-        if self.exit_strategy == ExitStrategy.FIXED:
+        # Handle if exit_strategy is a pandas Series
+        if hasattr(self.exit_strategy, '__class__') and self.exit_strategy.__class__.__name__ == 'Series':
+            # Extract the first value if it's a Series
+            exit_strategy = self.exit_strategy.iloc[0] if len(self.exit_strategy) > 0 else None
+            # Convert to standard string
+            if exit_strategy is not None:
+                exit_strategy = ExitStrategy.from_string(exit_strategy)
+            else:
+                # Default to PATTERN_BASED if we can't determine the type
+                return
+        else:
+            exit_strategy = self.exit_strategy
+
+        if exit_strategy == ExitStrategy.FIXED:
             if self.fixed_tp_pct is None or self.fixed_sl_pct is None:
                 raise ValueError("Fixed exit strategy requires fixed_tp_pct and fixed_sl_pct")
-        elif self.exit_strategy == ExitStrategy.TRAILING:
+        elif exit_strategy == ExitStrategy.TRAILING:
             if self.trailing_sl_pct is None:
                 raise ValueError("Trailing exit strategy requires trailing_sl_pct")
-        elif self.exit_strategy == ExitStrategy.TIME_BASED:
+        elif exit_strategy == ExitStrategy.TIME_BASED:
             if self.time_exit_periods is None:
                 raise ValueError("Time-based exit strategy requires time_exit_periods")
-        elif self.exit_strategy == ExitStrategy.DUAL:
+        elif exit_strategy == ExitStrategy.DUAL:
             if self.time_exit_periods is None or (self.fixed_tp_pct is None and self.trailing_sl_pct is None):
-                raise ValueError("Dual exit strategy requires time_exit_periods and either fixed_tp_pct or trailing_sl_pct")
-    
+                raise ValueError("Dual exit strategy requires time_exit_periods and either fixed_tp_pct or trailing_sl_pct")    
     def to_dict(self) -> Dict[str, Any]:
         """Convert config to a dictionary for database storage."""
+        # Helper function to extract value from pandas Series if needed
+        def extract_value(val):
+            if hasattr(val, '__class__') and val.__class__.__name__ == 'Series':
+                return val.iloc[0] if len(val) > 0 else None
+            return val
+            
+        # Get simple string values for recognition_technique and exit_strategy
+        recognition_technique = extract_value(self.recognition_technique)
+        exit_strategy = extract_value(self.exit_strategy)
+            
         config_dict = {
-            'stock_id': self.stock_id,
-            'timeframe_id': self.timeframe_id,
-            'n_pips': self.n_pips,
-            'lookback': self.lookback,
-            'hold_period': self.hold_period,
-            'returns_hold_period': self.returns_hold_period,
-            'distance_measure': self.distance_measure,
-            'name': self.config_name,
-            'description': self.description,
-            'recognition_technique': self.recognition_technique.value,
+            'stock_id': extract_value(self.stock_id),
+            'timeframe_id': extract_value(self.timeframe_id),
+            'n_pips': int(extract_value(self.n_pips)),
+            'lookback': int(extract_value(self.lookback)),
+            'hold_period': int(extract_value(self.hold_period)),
+            'returns_hold_period': int(extract_value(self.returns_hold_period)),
+            'distance_measure': int(extract_value(self.distance_measure)),
+            'name': extract_value(self.config_name),
+            'description': extract_value(self.description),
+            'recognition_technique': recognition_technique,
             'model_params': str(self.model_params),
-            'exit_strategy': self.exit_strategy.value,
+            'exit_strategy': exit_strategy,
         }
+        
+        # Add config_id if it exists
+        if self.config_id is not None:
+            config_dict['config_id'] = extract_value(self.config_id)
         
         # Add optional parameters if they exist
         for attr in ['fixed_tp_pct', 'fixed_sl_pct', 'trailing_sl_pct', 
                     'time_exit_periods', 'reward_risk_min', 'mse_threshold']:
             value = getattr(self, attr, None)
             if value is not None:
-                config_dict[attr] = value
+                config_dict[attr] = extract_value(value)
+                # Convert numeric values that might be in Series
+                if attr in ['fixed_tp_pct', 'fixed_sl_pct', 'trailing_sl_pct', 'reward_risk_min', 'mse_threshold']:
+                    try:
+                        config_dict[attr] = float(config_dict[attr])
+                    except (TypeError, ValueError):
+                        pass
+                elif attr == 'time_exit_periods':
+                    try:
+                        config_dict[attr] = int(config_dict[attr])
+                    except (TypeError, ValueError):
+                        pass
                 
         return config_dict
 
@@ -311,7 +397,6 @@ def get_recommended_config(stock_id: int, timeframe_id: int) -> BacktestConfig:
     cursor = db.connection.cursor()
     cursor.execute(query, (stock_id, timeframe_id))
     result = cursor.fetchone()
-    
     if result:
         # Create a config from the database result
         config = BacktestConfig(

@@ -17,10 +17,7 @@ import json
 import numpy as np
 import pandas as pd
 import sqlite3 as db
-import sqlitecloud
 from datetime import datetime, timedelta
-
-
 
 # Setup path
 # Get the current working directory (where the notebook/script is running)
@@ -57,22 +54,111 @@ class Database:
         Args:
             db_name (str): Path to the SQLite database file
         """
-        self.db_name = db_name
+        self.db_path = db_name
         self.connection = None
         self.cursor = None
+        print(f"Initializing database connection to {db_name}")
         self.connect()
      
     def connect(self):
         """Connect to the SQLite database."""
-        self.connection = db.connect(self.db_name, check_same_thread=False)
-        self.cursor = self.connection.cursor()
-        print(f"Connected to offline sqlite database")
+        try:
+            self.connection = db.connect(self.db_path, check_same_thread=False)
+            self.cursor = self.connection.cursor()
+            print(f"Connected to SQLite database: {self.db_path}")
+        except db.Error as e:
+            print(f"Database connection error: {e}")
+            raise
 
     def close(self):
         """Close the database connection."""
         if self.connection:
             self.connection.close()
             print(f"Closed connection to database")
+    
+    #############################################################################
+    # DATABASE UTILITY FUNCTIONS
+    #############################################################################
+    def execute_query(self, query, params=None, commit=False):
+        """
+        Execute a SQL query and optionally commit the changes.
+        
+        Args:
+            query (str): SQL query to execute
+            params (tuple/list/dict, optional): Parameters for the query
+            commit (bool): Whether to commit the changes
+            
+        Returns:
+            cursor: Database cursor after executing the query
+        """
+        try:
+            if params:
+                result = self.cursor.execute(query, params)
+            else:
+                result = self.cursor.execute(query)
+            
+            if commit:
+                self.connection.commit()
+            
+            return result
+        except db.Error as e:
+            print(f"Query execution error: {e}")
+            print(f"Query: {query}")
+            if params:
+                print(f"Parameters: {params}")
+            raise
+    
+    def fetch_all(self, query, params=None):
+        """
+        Execute a query and fetch all results.
+        
+        Args:
+            query (str): SQL query to execute
+            params (tuple/list/dict, optional): Parameters for the query
+            
+        Returns:
+            list: List of query results
+        """
+        cursor = self.execute_query(query, params)
+        return cursor.fetchall()
+    
+    def fetch_one(self, query, params=None):
+        """
+        Execute a query and fetch one result.
+        
+        Args:
+            query (str): SQL query to execute
+            params (tuple/list/dict, optional): Parameters for the query
+            
+        Returns:
+            tuple: Query result
+        """
+        cursor = self.execute_query(query, params)
+        return cursor.fetchone()
+    
+    def list_tables(self):
+        """
+        List all tables in the database.
+        
+        Returns:
+            list: Table names
+        """
+        query = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        tables = self.fetch_all(query)
+        return [table[0] for table in tables]
+    
+    def describe_table(self, table_name):
+        """
+        Get the schema for a table.
+        
+        Args:
+            table_name (str): Name of the table
+            
+        Returns:
+            list: Column information
+        """
+        query = f"PRAGMA table_info({table_name})"
+        return self.fetch_all(query)
     
     #############################################################################
     # AUTHENTICATION FUNCTIONS
@@ -88,19 +174,16 @@ class Database:
         Returns:
             bool: True if authentication successful, False otherwise
         """
-        # Check if the user exists in the database
-        user = self.connection.execute('''
-            SELECT Password FROM users WHERE Username = ?
-        ''', (username,)).fetchone()
+        user = self.fetch_one(
+            "SELECT password FROM users WHERE username = ?", 
+            (username,)
+        )
         
         if user:
-            # Check if the password is correct
-            if bcrypt.checkpw(password.encode('utf-8'), user[0]):
-                return True
-            else:
-                return False
-        else:
-            return False
+            stored_password_hash = user[0]
+            return bcrypt.checkpw(password.encode('utf-8'), stored_password_hash.encode('utf-8'))
+        
+        return False
     
     def get_user_email(self, username):
         """
@@ -112,11 +195,12 @@ class Database:
         Returns:
             str: The user's email address
         """
-        user_email = self.connection.execute(f'''
-            SELECT Email FROM users WHERE Username = '{username}'
-        ''').fetchall()
+        user = self.fetch_one(
+            "SELECT email FROM users WHERE username = ?", 
+            (username,)
+        )
         
-        return user_email[0][0]
+        return user[0] if user else None
     
     def get_user_id(self, username):
         """
@@ -128,190 +212,1011 @@ class Database:
         Returns:
             int: The user's ID
         """
-        user_id = self.connection.execute(f'''
-            SELECT UserID FROM users WHERE Username = '{username}'
-        ''').fetchall()
+        user = self.fetch_one(
+            "SELECT user_id FROM users WHERE username = ?", 
+            (username,)
+        )
         
-        return user_id[0][0]
+        return user[0] if user else None
+    
+    def create_user(self, username, password, email, preferences=None):
+        """
+        Create a new user account.
+        
+        Args:
+            username (str): Username for the new account
+            password (str): Password for the new account
+            email (str): Email address for the new account
+            preferences (str, optional): User preferences as JSON string
+            
+        Returns:
+            int: New user ID
+        """
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        
+        cursor = self.execute_query(
+            "INSERT INTO users (username, password, email, preferences) VALUES (?, ?, ?, ?)",
+            (username, hashed_password, email, preferences),
+            commit=True
+        )
+        
+        return cursor.lastrowid
+    
+    #############################################################################
+    # STOCK DATA FUNCTIONS
+    #############################################################################
+    def get_stock_list(self):
+        """
+        Get list of all stocks in the database.
+        
+        Returns:
+            DataFrame: All stocks
+        """
+        query = "SELECT * FROM stocks"
+        stocks = self.fetch_all(query)
+        columns = ['stock_id', 'symbol', 'name', 'description', 'sector', 'created_at']
+        
+        return pd.DataFrame(stocks, columns=columns)
+    
+    def get_timeframes(self):
+        """
+        Get all available timeframes.
+        
+        Returns:
+            DataFrame: All timeframes
+        """
+        query = "SELECT * FROM timeframes"
+        timeframes = self.fetch_all(query)
+        columns = ['timeframe_id', 'minutes', 'name', 'description']
+        
+        return pd.DataFrame(timeframes, columns=columns)
+    
+    def get_stock_data(self, stock_id, timeframe_id, limit=None):
+        """
+        Get stock data for a specific stock and timeframe.
+        
+        Args:
+            stock_id (int): ID of the stock
+            timeframe_id (int): ID of the timeframe
+            limit (int, optional): Maximum number of records to return
+            
+        Returns:
+            DataFrame: Stock data
+        """
+        query = """
+            SELECT * FROM stock_data 
+            WHERE stock_id = ? AND timeframe_id = ?
+            ORDER BY timestamp DESC
+        """
+        
+        if limit:
+            query += f" LIMIT {limit}"
+        
+        params =[stock_id, timeframe_id]
+        stock_data = self.fetch_all(query, tuple(params))
+        columns = ['entry_id', 'stock_id', 'timeframe_id', 'timestamp', 'open_price', 
+                   'high_price', 'low_price', 'close_price', 'volume']
+        
+        df = pd.DataFrame(stock_data, columns=columns)
+        if not df.empty:
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df.set_index('timestamp', inplace=True)
+            df.sort_index(inplace=True)
+        
+        return df
+    
+    def get_stock_data_range(self, stock_id, timeframe_id, start_date, end_date):
+        """
+        Get stock data for a specific date range.
+        
+        Args:
+            stock_id (int): ID of the stock
+            timeframe_id (int): ID of the timeframe
+            start_date (str): Start date in format 'YYYY-MM-DD'
+            end_date (str): End date in format 'YYYY-MM-DD'
+            
+        Returns:
+            DataFrame: Stock data within the specified range
+        """
+       
+        
+        stock_data = self.connection.execute("""
+            SELECT * FROM stock_data 
+            WHERE stock_id = ? AND timeframe_id = ?
+                AND timestamp >= ? AND timestamp <= ?
+            ORDER BY timestamp
+        """, (stock_id, timeframe_id, start_date, end_date)).fetchall()
+   
+        columns = ['entry_id', 'stock_id', 'timeframe_id', 'timestamp', 'open_price', 
+                   'high_price', 'low_price', 'close_price', 'volume']
+        
+        df = pd.DataFrame(stock_data, columns=columns)
+        if not df.empty:
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df.set_index('timestamp', inplace=True)
+            df.sort_index(inplace=True)
+        
+        return df
+    
+    def store_stock_data(self, stock_data, stock_id, timeframe_id):
+        """
+        Store stock data in the database.
+        
+        Args:
+            stock_data (DataFrame): Stock data to store
+            stock_id (int): ID of the stock
+            timeframe_id (int): ID of the timeframe
+            
+        Returns:
+            int: Number of records inserted
+        """
+        count = 0
+        for index, row in stock_data.iterrows():
+            timestamp = index.strftime('%Y-%m-%d %H:%M:%S')
+            
+            self.execute_query(
+                """
+                INSERT INTO stock_data (stock_id, timeframe_id, timestamp, open_price, 
+                                       high_price, low_price, close_price, volume)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (stock_id, timeframe_id, timestamp, row['Open'], row['High'], 
+                 row['Low'], row['Close'], row.get('Volume', 0)),
+                commit=False
+            )
+            count += 1
+        
+        self.connection.commit()
+        print(f"Stored {count} records for stock_id: {stock_id}, timeframe_id: {timeframe_id}")
+        return count
+    
+    #############################################################################
+    # PATTERN FUNCTIONS
+    #############################################################################
+    def get_patterns(self, stock_id=None, timeframe_id=None, limit=None):
+        """
+        Get patterns from the database with optional filtering.
+        
+        Args:
+            stock_id (int, optional): Filter by stock ID
+            timeframe_id (int, optional): Filter by timeframe ID
+            limit (int, optional): Maximum number of patterns to return
+            
+        Returns:
+            DataFrame: Patterns matching the criteria
+        """
+        query = "SELECT * FROM patterns"
+        params = []
+        conditions = []
+        
+        if stock_id is not None:
+            conditions.append("stock_id = ?")
+            params.append(stock_id)
+        
+        if timeframe_id is not None:
+            conditions.append("timeframe_id = ?")
+            params.append(timeframe_id)
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        if limit:
+            query += f" LIMIT {limit}"
+        
+        patterns = self.fetch_all(query, params if params else None)
+        columns = ['pattern_id', 'stock_id', 'timeframe_id', 'config_id', 'cluster_id',
+                   'price_points_json', 'volume_data', 'market_condition', 'outcome',
+                   'max_gain', 'max_drawdown', 'reward_risk_ratio']
+        
+        df = pd.DataFrame(patterns, columns=columns)
+        
+        # Convert JSON strings to Python objects
+        if not df.empty and 'price_points_json' in df.columns:
+            df['price_points'] = df['price_points_json'].apply(lambda x: json.loads(x) if x else None)
+        
+        return df
+    
+    def store_pattern(self, pattern_data):
+        """
+        Store a pattern in the database.
+        
+        Args:
+            pattern_data (dict): Pattern data including:
+                - stock_id: ID of the stock
+                - timeframe_id: ID of the timeframe
+                - config_id: ID of the experiment configuration
+                - price_points: List of price points
+                - market_condition: Market condition (Bullish, Bearish, Neutral)
+                - outcome: Pattern outcome
+                - max_gain: Maximum gain
+                - max_drawdown: Maximum drawdown
+                
+        Returns:
+            int: New pattern ID
+        """
+        # Convert price points to JSON if needed
+        if 'price_points' in pattern_data and not isinstance(pattern_data['price_points'], str):
+            pattern_data['price_points_json'] = json.dumps(pattern_data['price_points'])
+        
+        # Prepare query and parameters
+        columns = []
+        placeholders = []
+        values = []
+        
+        for key, value in pattern_data.items():
+            if key != 'price_points':  # Skip the Python object version
+                columns.append(key)
+                placeholders.append('?')
+                values.append(value)
+        
+        query = f"""
+            INSERT INTO patterns ({', '.join(columns)})
+            VALUES ({', '.join(placeholders)})
+        """
+        
+        cursor = self.execute_query(query, values, commit=True)
+        return cursor.lastrowid
+    
+    def store_patterns_batch(self, patterns, stock_id, timeframe_id, config_id, pip_pattern_miner):
+        """
+        Store multiple patterns in a batch.
+        
+        Args:
+            patterns (list): List of pattern data
+            stock_id (int): ID of the stock
+            timeframe_id (int): ID of the timeframe
+            config_id (int): ID of the configuration
+            pip_pattern_miner: Pattern miner object with additional data
+            
+        Returns:
+            int: Number of patterns stored
+        """
+        count = 0
+        
+        for i, pattern in enumerate(pip_pattern_miner._unique_pip_patterns):
+            # Convert the pattern to JSON
+            price_points_json = json.dumps(pattern)
+            
+            # Determine market condition
+            first_point = pattern[0]
+            last_point = pattern[-1]
+            
+            if first_point < last_point:
+                market_condition = 'Bullish'
+            elif first_point > last_point:
+                market_condition = 'Bearish'
+            else:
+                market_condition = 'Neutral'
+            
+            # Get pattern return and determine outcome metrics
+            outcome = pip_pattern_miner._returns_fixed_hold[i]
+            
+            # Calculate max gain and drawdown
+            max_gain = pip_pattern_miner._returns_mfe[i]
+            max_drawdown = pip_pattern_miner._returns_mae[i]
+            
+            # Calculate reward/risk ratio
+            reward_risk_ratio = abs(max_gain) / (abs(max_drawdown) + 1e-10)  # Avoid division by zero
+            
+            # Insert the pattern
+            self.execute_query(
+                """
+                INSERT INTO patterns (
+                    pattern_id, stock_id, timeframe_id, config_id, 
+                    price_points_json, market_condition, outcome,
+                    max_gain, max_drawdown, reward_risk_ratio
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (i, stock_id, timeframe_id, config_id, price_points_json, 
+                 market_condition, outcome, max_gain, max_drawdown, reward_risk_ratio),
+                commit=False
+            )
+            count += 1
+        
+        self.connection.commit()
+        print(f"Stored {count} patterns for stock_id: {stock_id}, timeframe_id: {timeframe_id}")
+        return count
+    
+    #############################################################################
+    # CLUSTER FUNCTIONS
+    #############################################################################
+    def get_clusters(self, stock_id=None, timeframe_id=None, limit=None):
+        """
+        Get clusters from the database with optional filtering.
+        
+        Args:
+            stock_id (int, optional): Filter by stock ID
+            timeframe_id (int, optional): Filter by timeframe ID
+            limit (int, optional): Maximum number of clusters to return
+            
+        Returns:
+            DataFrame: Clusters matching the criteria
+        """
+        query = "SELECT * FROM clusters"
+        params = []
+        conditions = []
+        
+        if stock_id is not None:
+            conditions.append("stock_id = ?")
+            params.append(stock_id)
+        
+        if timeframe_id is not None:
+            conditions.append("timeframe_id = ?")
+            params.append(timeframe_id)
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        if limit:
+            query += f" LIMIT {limit}"
+        
+        clusters = self.fetch_all(query, params if params else None)
+        columns = ['cluster_id', 'stock_id', 'timeframe_id', 'config_id', 'description', 
+                   'avg_price_points_json', 'avg_volume_data', 'market_condition', 'outcome',
+                   'label', 'probability_score', 'pattern_count', 'max_gain', 'max_drawdown',
+                   'reward_risk_ratio', 'profit_factor', 'created_at']
+        
+        df = pd.DataFrame(clusters, columns=columns)
+        
+        # Convert JSON strings to Python objects
+        if not df.empty and 'avg_price_points_json' in df.columns:
+            df['avg_price_points'] = df['avg_price_points_json'].apply(lambda x: json.loads(x) if x else None)
+        
+        # Calculate additional metrics if not present
+        if not df.empty:
+            # Ensure these columns exist (for backward compatibility)
+            if 'reward_risk_ratio' not in df.columns:
+                df['reward_risk_ratio'] = abs(df['max_gain']) / (abs(df['max_drawdown']) + 1e-10)
+            
+            if 'profit_factor' not in df.columns:
+                df['profit_factor'] = (df['probability_score'] * df['reward_risk_ratio']) / (1 - df['probability_score'] + 1e-10)
+        
+        return df    
+    def get_clusters_by_stock_id(self, stock_ID):
+        """
+        Get clusters for a specific stock.
+        
+        Args:
+            stock_ID (int): ID of the stock
+            
+        Returns:
+            DataFrame: Filtered clusters for the specified stock
+        """
+        return self.get_clusters(stock_id=stock_ID)
+        
+    def get_clusters_all(self):
+        """
+        Get all clusters from the database.
+        
+        Returns:
+            DataFrame: All clusters
+        """
+        return self.get_clusters()
+    
+    def store_cluster(self, cluster_data):
+        """
+        Store a cluster in the database.
+        
+        Args:
+            cluster_data (dict): Cluster data including:
+                - stock_id: ID of the stock
+                - timeframe_id: ID of the timeframe
+                - config_id: ID of the experiment configuration
+                - avg_price_points: List of average price points
+                - market_condition: Market condition (Bullish, Bearish, Neutral)
+                - outcome: Cluster outcome
+                - label: Cluster label (Buy, Sell, Neutral)
+                - probability_score: Probability score
+                - pattern_count: Number of patterns in the cluster
+                - max_gain: Maximum gain
+                - max_drawdown: Maximum drawdown
+                
+        Returns:
+            int: New cluster ID
+        """
+        # Convert price points to JSON if needed
+        if 'avg_price_points' in cluster_data and not isinstance(cluster_data['avg_price_points'], str):
+            cluster_data['avg_price_points_json'] = json.dumps(cluster_data['avg_price_points'])
+        
+        # Prepare query and parameters
+        columns = []
+        placeholders = []
+        values = []
+        
+        for key, value in cluster_data.items():
+            if key != 'avg_price_points':  # Skip the Python object version
+                columns.append(key)
+                placeholders.append('?')
+                values.append(value)
+        
+        query = f"""
+            INSERT INTO clusters ({', '.join(columns)})
+            VALUES ({', '.join(placeholders)})
+        """
+        
+        cursor = self.execute_query(query, values, commit=True)
+        return cursor.lastrowid
+    
+    def store_clusters_batch(self, clusters, stock_id, timeframe_id, config_id, pip_pattern_miner):
+        """
+        Store multiple clusters in a batch.
+        
+        Args:
+            clusters (list): List of cluster data
+            stock_id (int): ID of the stock
+            timeframe_id (int): ID of the timeframe
+            config_id (int): ID of the configuration
+            pip_pattern_miner: Pattern miner object with additional data
+            
+        Returns:
+            int: Number of clusters stored
+        """
+        count = 0
+        
+        for i, cluster in enumerate(pip_pattern_miner._cluster_centers):
+            # Convert the cluster to JSON
+            avg_price_points_json = json.dumps(cluster)
+            
+            # Determine market condition
+            first_point = cluster[0]
+            last_point = cluster[-1]
+            
+            if first_point < last_point:
+                market_condition = 'Bullish'
+            elif first_point > last_point:
+                market_condition = 'Bearish'
+            else:
+                market_condition = 'Neutral'
+            
+            # Get cluster return and label
+            outcome = pip_pattern_miner._cluster_returns[i]
+            
+            if outcome > 0:
+                label = 'Buy'
+            elif outcome < 0:
+                label = 'Sell'
+            else:
+                label = 'Neutral'
+            
+            # Pattern count
+            pattern_count = len(pip_pattern_miner._pip_clusters[i])
+            
+            # Calculate metrics
+            max_gain = pip_pattern_miner._cluster_mfe[i]
+            max_drawdown = pip_pattern_miner._cluster_mae[i]
+            
+            # Calculate probability score, reward/risk ratio, and profit factor
+            probability_score = self.calculate_cluster_probability_score(
+                stock_id, i, timeframe_id, config_id, label, pip_pattern_miner
+            )
+            
+            reward_risk_ratio = abs(max_gain) / (abs(max_drawdown) + 1e-10)
+            profit_factor = (probability_score * reward_risk_ratio) / (1 - probability_score + 1e-10)
+            
+            # Insert the cluster
+            self.execute_query(
+                """
+                INSERT INTO clusters (
+                    cluster_id, stock_id, timeframe_id, config_id,
+                    avg_price_points_json, market_condition, outcome, label,
+                    probability_score, pattern_count, max_gain, max_drawdown,
+                    reward_risk_ratio, profit_factor, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                """,
+                (i, stock_id, timeframe_id, config_id, avg_price_points_json, 
+                 market_condition, outcome, label, probability_score, pattern_count,
+                 max_gain, max_drawdown, reward_risk_ratio, profit_factor),
+                commit=False
+            )
+            count += 1
+        
+        self.connection.commit()
+        print(f"Stored {count} clusters for stock_id: {stock_id}, timeframe_id: {timeframe_id}")
+        return count
+    
+    def bind_patterns_to_clusters(self, stock_id, timeframe_id, config_id, pip_pattern_miner):
+        """
+        Update pattern records with their cluster IDs.
+        
+        Args:
+            stock_id (int): ID of the stock
+            timeframe_id (int): ID of the timeframe
+            config_id (int): ID of the configuration
+            pip_pattern_miner: Pattern miner object with cluster assignments
+        """
+        for cluster_id, pattern_ids in enumerate(pip_pattern_miner._pip_clusters):
+            for pattern_id in pattern_ids:
+                self.execute_query(
+                    """
+                    UPDATE patterns 
+                    SET cluster_id = ? 
+                    WHERE pattern_id = ? AND stock_id = ? AND timeframe_id = ? AND config_id = ?
+                    """,
+                    (cluster_id, pattern_id, stock_id, timeframe_id, config_id),
+                    commit=False
+                )
+            
+            # Update pattern count in clusters table
+            self.execute_query(
+                """
+                UPDATE clusters 
+                SET pattern_count = ? 
+                WHERE cluster_id = ? AND stock_id = ? AND timeframe_id = ? AND config_id = ?
+                """,
+                (len(pattern_ids), cluster_id, stock_id, timeframe_id, config_id),
+                commit=False
+            )
+        
+        self.connection.commit()
+        print(f"Updated cluster assignments for patterns")
+    
+    def calculate_cluster_probability_score(self, stock_id, cluster_id, timeframe_id, config_id, label, pip_pattern_miner=None):
+        """
+        Calculate probability score for a cluster based on its patterns.
+        
+        Args:
+            stock_id (int): ID of the stock
+            cluster_id (int): ID of the cluster
+            timeframe_id (int): ID of the timeframe
+            config_id (int): ID of the configuration
+            label (str): Cluster label (Buy, Sell, Neutral)
+            pip_pattern_miner: Pattern miner object (optional)
+            
+        Returns:
+            float: Probability score (0-1)
+        """
+        if pip_pattern_miner:
+            # Calculate directly from pattern miner
+            pattern_indices = pip_pattern_miner._pip_clusters[cluster_id]
+            outcomes = [pip_pattern_miner._returns_fixed_hold[i] for i in pattern_indices]
+            
+            total_patterns = len(outcomes)
+            if total_patterns == 0:
+                return 0.5
+            
+            if label == 'Buy':
+                positive_outcomes = sum(1 for outcome in outcomes if outcome > 0)
+                return positive_outcomes / total_patterns
+            elif label == 'Sell':
+                negative_outcomes = sum(1 for outcome in outcomes if outcome < 0)
+                return negative_outcomes / total_patterns
+            else:
+                return 0.5
+        else:
+            # Retrieve from database
+            query = """
+                SELECT outcome FROM patterns 
+                WHERE cluster_id = ? AND stock_id = ? AND timeframe_id = ? AND config_id = ?
+            """
+            pattern_outcomes = self.fetch_all(query, (cluster_id, stock_id, timeframe_id, config_id))
+            
+            total_patterns = len(pattern_outcomes)
+            if total_patterns == 0:
+                return 0.5
+            
+            if label == 'Buy':
+                positive_outcomes = sum(1 for outcome in pattern_outcomes if outcome[0] > 0)
+                return positive_outcomes / total_patterns
+            elif label == 'Sell':
+                negative_outcomes = sum(1 for outcome in pattern_outcomes if outcome[0] < 0)
+                return negative_outcomes / total_patterns
+            else:
+                return 0.5
+    
+    def update_cluster_probability_score(self, stock_id, cluster_id, timeframe_id, config_id):
+        """
+        Update probability score for a cluster in the database.
+        
+        Args:
+            stock_id (int): ID of the stock
+            cluster_id (int): ID of the cluster
+            timeframe_id (int): ID of the timeframe
+            config_id (int): ID of the configuration
+            
+        Returns:
+            float: Updated probability score
+        """
+        # First get the cluster label
+        cluster = self.fetch_one(
+            """
+            SELECT label FROM clusters 
+            WHERE cluster_id = ? AND stock_id = ? AND timeframe_id = ? AND config_id = ?
+            """, 
+            (cluster_id, stock_id, timeframe_id, config_id)
+        )
+        
+        if not cluster:
+            return 0.5
+        
+        label = cluster[0]
+        
+        # Calculate probability score
+        probability_score = self.calculate_cluster_probability_score(
+            stock_id, cluster_id, timeframe_id, config_id, label
+        )
+        
+        # Update the database
+        self.execute_query(
+            """
+            UPDATE clusters SET probability_score = ? 
+            WHERE cluster_id = ? AND stock_id = ? AND timeframe_id = ? AND config_id = ?
+            """,
+            (probability_score, cluster_id, stock_id, timeframe_id, config_id),
+            commit=True
+        )
+        
+        return probability_score
+    
+    #############################################################################
+    # PREDICTION FUNCTIONS
+    #############################################################################
+    def get_predictions(self, stock_id=None, limit=None):
+        """
+        Get predictions from the database.
+        
+        Args:
+            stock_id (int, optional): Filter by stock ID
+            limit (int, optional): Maximum number of predictions to return
+            
+        Returns:
+            DataFrame: Predictions matching the criteria
+        """
+        query = "SELECT * FROM predictions"
+        params = []
+        
+        if stock_id is not None:
+            query += " WHERE stock_id = ?"
+            params.append(stock_id)
+        
+        query += " ORDER BY prediction_date DESC"
+        
+        if limit:
+            query += f" LIMIT {limit}"
+        
+        predictions = self.fetch_all(query, params if params else None)
+        columns = ['prediction_id', 'stock_id', 'pattern_id', 'timeframe_id', 'config_id', 
+                   'prediction_date', 'predicted_outcome', 'confidence_level', 
+                   'sentiment_data_id', 'prediction_metrics']
+        
+        df = pd.DataFrame(predictions, columns=columns)
+        
+        # Parse JSON columns
+        if not df.empty:
+            for col in ['predicted_outcome', 'prediction_metrics']:
+                if col in df.columns:
+                    df[col] = df[col].apply(lambda x: json.loads(x) if x else None)
+        
+        return df
+    
+    def store_prediction(self, prediction_data):
+        """
+        Store a prediction in the database.
+        
+        Args:
+            prediction_data (dict): Prediction data including:
+                - stock_id: ID of the stock
+                - pattern_id: ID of the pattern
+                - timeframe_id: ID of the timeframe
+                - config_id: ID of the configuration
+                - prediction_date: Date of prediction
+                - predicted_outcome: Detailed prediction results (JSON)
+                - confidence_level: Confidence level (0-1)
+                - sentiment_data_id: ID of related sentiment data
+                - prediction_metrics: Additional metrics (JSON)
+                
+        Returns:
+            int: New prediction ID
+        """
+        # Convert JSON objects to strings
+        for key in ['predicted_outcome', 'prediction_metrics']:
+            if key in prediction_data and isinstance(prediction_data[key], (dict, list)):
+                prediction_data[key] = json.dumps(prediction_data[key])
+        
+        # Prepare query and parameters
+        columns = []
+        placeholders = []
+        values = []
+        
+        for key, value in prediction_data.items():
+            columns.append(key)
+            placeholders.append('?')
+            values.append(value)
+        
+        query = f"""
+            INSERT INTO predictions ({', '.join(columns)})
+            VALUES ({', '.join(placeholders)})
+        """
+        
+        cursor = self.execute_query(query, values, commit=True)
+        return cursor.lastrowid
+    
+    #############################################################################
+    # NOTIFICATION FUNCTIONS
+    #############################################################################
+    def get_notifications(self, user_id=None, limit=None):
+        """
+        Get notifications from the database.
+        
+        Args:
+            user_id (int, optional): Filter by user ID
+            limit (int, optional): Maximum number of notifications to return
+            
+        Returns:
+            DataFrame: Notifications matching the criteria
+        """
+        query = "SELECT * FROM notifications"
+        params = []
+        
+        if user_id is not None:
+            query += " WHERE user_id = ?"
+            params.append(user_id)
+        
+        query += " ORDER BY sent_time DESC"
+        
+        if limit:
+            query += f" LIMIT {limit}"
+        
+        notifications = self.fetch_all(query, params if params else None)
+        columns = ['notification_id', 'user_id', 'prediction_id', 'sent_time', 
+                   'notification_type', 'status']
+        
+        return pd.DataFrame(notifications, columns=columns)
+    
+    def store_notification(self, notification_data):
+        """
+        Store a notification in the database.
+        
+        Args:
+            notification_data (dict): Notification data including:
+                - user_id: ID of the user
+                - prediction_id: ID of the related prediction
+                - sent_time: Time the notification was sent
+                - notification_type: Type of notification
+                - status: Status of the notification
+                
+        Returns:
+            int: New notification ID
+        """
+        # Prepare query and parameters
+        columns = []
+        placeholders = []
+        values = []
+        
+        for key, value in notification_data.items():
+            columns.append(key)
+            placeholders.append('?')
+            values.append(value)
+        
+        query = f"""
+            INSERT INTO notifications ({', '.join(columns)})
+            VALUES ({', '.join(placeholders)})
+        """
+        
+        cursor = self.execute_query(query, values, commit=True)
+        return cursor.lastrowid
     
     #############################################################################
     # SENTIMENT DATA FUNCTIONS
     #############################################################################    
-    def store_articles_in_database(self, articles, most_relevant_stock_id, date):
+    def get_articles(self, stock_id=None, start_date=None, end_date=None, limit=None):
         """
-        Store articles and their stock relations in the database.
+        Get articles from the database.
         
         Args:
-            articles (list): List of article dictionaries to store
-            article_stock_relations (list): List of (article_index, relation_dict) tuples
-            most_relevant_stock_id (int): ID of the most relevant stock for these articles
-            date_str (str): Date string in 'YYYY-MM-DD' format
-        """
-        try:
-            
-            cursor = self.connection.cursor()
-            
-            # Insert articles and get their IDs
-            article_ids = []
-            
-            for article in articles:
-                # Create a copy of the article data to modify
-                article_data = article.copy()
-                
-                # Convert authors from list to string if necessary
-                if isinstance(article_data.get('authors'), list):
-                    article_data['authors'] = ', '.join(article_data['authors'])
-                
-                   
-                # Check if the article already exists in the database
-                cursor.execute(
-                    "SELECT article_id FROM articles WHERE url = ?", 
-                    (article_data['url'],)
-                )
-                existing = cursor.fetchone()
-                
-                if existing:
-                    # Article already exists, just get its ID
-                    article_ids.append(existing[0])
-                else:
-                    # Insert the new article
-                    columns = ', '.join(article_data.keys())
-                    placeholders = ', '.join(['?' for _ in article_data])
-                    
-                    insert_query = f"INSERT INTO articles ({columns}) VALUES ({placeholders})"
-                    cursor.execute(insert_query, list(article_data.values()))
-                    
-                    article_ids.append(cursor.lastrowid)
-            
-            
-            # Create or update an entry in the stock_sentiment table
-            cursor.execute(
-                """
-                SELECT COUNT(*) FROM stock_sentiment 
-                WHERE stock_id = ? AND date = ?
-                """, 
-                (most_relevant_stock_id, date)
-            )
-            
-            exists = cursor.fetchone()[0] > 0
-          
-        
-            # get the article count
-            article_count = len(article_ids)
-            # Calculate aggregate sentiment
-            avg_sentiment = np.mean([article['overall_sentiment_score'] for article in articles])
-            # Execute the query using today's date for stock_sentiment
-            if exists:
-                # Update existing entry
-                sentiment_update_query = """
-                UPDATE stock_sentiment 
-                SET article_count = ?, news_sentiment_score = ?
-                WHERE stock_id = ? AND date = ?
-                """
-                cursor.execute(sentiment_update_query, (article_count, avg_sentiment, most_relevant_stock_id, date))
-            else:
-                # Create new entry
-                sentiment_update_query = """
-                INSERT INTO stock_sentiment 
-                (stock_id, date, article_count, news_sentiment_score)
-                VALUES (?, ?, ?, ?)
-                """
-                cursor.execute(sentiment_update_query, (most_relevant_stock_id, date, article_count, avg_sentiment))
-            
-            # Commit all changes
-            self.connection.commit()
-                
-        except Exception as e:
-            print(f"Database operation error: {e}")
-            raise
-    
-    def get_article_sentiment(self, stock_id, start_date=None, end_date=None, limit=100):
-        """
-        Get article sentiment data for a specific stock within a date range.
-        
-        Args:
-            stock_id (int): The stock ID to retrieve sentiment for
-            start_date (str, optional): Start date in 'YYYY-MM-DD' format
-            end_date (str, optional): End date in 'YYYY-MM-DD' format
+            stock_id (int, optional): Filter by stock ID
+            start_date (str, optional): Start date in format 'YYYY-MM-DD'
+            end_date (str, optional): End date in format 'YYYY-MM-DD'
             limit (int, optional): Maximum number of articles to return
             
         Returns:
-            list: List of dictionaries containing article sentiment data
+            DataFrame: Articles matching the criteria
         """
-        query = '''
-            SELECT 
-                article_id, date, title, summary, source_name, url,
-                overall_sentiment_score, overall_sentiment_label,
-                most_relevant_stock_sentiment_score, most_relevant_stock_sentiment_label,
-                stock_relations
-            FROM 
-                articles
-            WHERE 
-                most_relevant_stock_id = ?
-        '''
+        query = "SELECT * FROM articles"
+        params = []
+        conditions = []
         
-        params = [stock_id]
+        if stock_id is not None:
+            conditions.append("most_relevant_stock_id = ?")
+            params.append(stock_id)
         
         if start_date:
-            query += " AND date >= ?"
+            conditions.append("date >= ?")
             params.append(start_date)
         
         if end_date:
-            query += " AND date <= ?"
+            conditions.append("date <= ?")
             params.append(end_date)
         
-        query += " ORDER BY date DESC LIMIT ?"
-        params.append(limit)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
         
-        results = []
+        query += " ORDER BY date DESC"
         
-        for row in self.connection.execute(query, params):
-            article = {
-                'article_id': row[0],
-                'date': row[1],
-                'title': row[2],
-                'summary': row[3],
-                'source': row[4],
-                'url': row[5],
-                'overall_sentiment_score': row[6],
-                'overall_sentiment_label': row[7],
-                'stock_sentiment_score': row[8],
-                'stock_sentiment_label': row[9]
-            }
+        if limit:
+            query += f" LIMIT {limit}"
+        
+        articles = self.fetch_all(query, params if params else None)
+        columns = ['article_id', 'date', 'authors', 'source_domain', 'source_name', 
+                   'title', 'summary', 'url', 'topics', 'overall_sentiment_label', 
+                   'overall_sentiment_score', 'event_type', 'fetch_timestamp',
+                   'most_relevant_stock_id', 'most_relevant_stock_sentiment_score',
+                   'most_relevant_stock_sentiment_label']
+        
+        df = pd.DataFrame(articles, columns=columns)
+        
+        # Convert timestamps
+        if not df.empty:
+            if 'date' in df.columns:
+                df['date'] = pd.to_datetime(df['date'])
+            if 'fetch_timestamp' in df.columns:
+                df['fetch_timestamp'] = pd.to_datetime(df['fetch_timestamp'])
             
-            # Parse stock_relations JSON if available
-            try:
-                if row[10]:  # stock_relations column
-                    article['stock_relations'] = json.loads(row[10])
-            except (json.JSONDecodeError, TypeError):
-                article['stock_relations'] = []
-            
-            results.append(article)
-            
-        return results
+            # Parse JSON columns
+            if 'topics' in df.columns:
+                df['topics'] = df['topics'].apply(lambda x: json.loads(x) if x and isinstance(x, str) else x)
+        
+        return df
     
-    def get_stock_sentiment_by_date(self, stock_id, start_date=None, end_date=None):
+    def store_article(self, article_data):
         """
-        Get aggregated stock sentiment data by date.
+        Store an article in the database.
         
         Args:
-            stock_id (int): The stock ID to retrieve sentiment for
+            article_data (dict): Article data including relevant fields
+                
+        Returns:
+            int: New article ID
+        """
+        # Convert JSON objects to strings
+        for key in ['ticker_sentiment']:
+            if key in article_data and isinstance(article_data[key], (dict, list)):
+                article_data[key] = json.dumps(article_data[key])
+        
+        # Prepare query and parameters
+        columns = []
+        placeholders = []
+        values = []
+        
+        for key, value in article_data.items():
+            columns.append(key)
+            placeholders.append('?')
+            values.append(value)
+        
+        query = f"""
+            INSERT INTO articles ({', '.join(columns)})
+            VALUES ({', '.join(placeholders)})
+        """
+        cursor = self.execute_query(query, values, commit=True)
+        return cursor.lastrowid
+        
+    def get_tweets(self, stock_id=None, start_date=None, end_date=None, limit=None):
+        """
+        Get tweets from the database.
+        
+        Args:
+            stock_id (int, optional): Filter by stock ID
+            start_date (str, optional): Start date in format 'YYYY-MM-DD'
+            end_date (str, optional): End date in format 'YYYY-MM-DD'
+            limit (int, optional): Maximum number of tweets to return
+            
+        Returns:
+            DataFrame: Tweets matching the criteria
+        """
+        query = "SELECT * FROM tweets"
+        params = []
+        conditions = []
+        
+        if stock_id is not None:
+            conditions.append("stock_id = ?")
+            params.append(stock_id)
+        
+        if start_date:
+            conditions.append("created_at >= ?")
+            params.append(start_date)
+        
+        if end_date:
+            conditions.append("created_at <= ?")
+            params.append(end_date)
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        query += " ORDER BY created_at DESC"
+        
+        if limit:
+            query += f" LIMIT {limit}"
+        
+        tweets = self.fetch_all(query, params if params else None)
+        columns = ['tweet_id', 'stock_id', 'author_username', 'author_name', 'author_followers',
+                  'author_following', 'author_verified', 'author_blue_verified', 'tweet_text',
+                  'created_at', 'retweet_count', 'reply_count', 'like_count', 'quote_count',
+                  'bookmark_count', 'lang', 'is_reply', 'is_quote', 'is_retweet', 'url',
+                  'search_term', 'sentiment_label', 'sentiment_score', 'sentiment_magnitude',
+                  'weighted_sentiment', 'collected_at']
+        
+        df = pd.DataFrame(tweets, columns=columns)
+        
+        # Convert timestamps
+        if not df.empty:
+            if 'created_at' in df.columns:
+                df['created_at'] = pd.to_datetime(df['created_at'])
+            if 'collected_at' in df.columns:
+                df['collected_at'] = pd.to_datetime(df['collected_at'])
+                
+        return df
+        
+       
+    def store_tweet(self, tweet_data):
+        """
+        Store a tweet in the database.
+        
+        Args:
+            tweet_data (dict): Tweet data including all relevant fields such as:
+                - tweet_id: Unique identifier for the tweet
+                - stock_id: ID of the related stock
+                - author_username: Username of the tweet author
+                - author_name: Display name of the tweet author
+                - author_followers: Number of followers
+                - author_following: Number of accounts following
+                - author_verified: Whether the author is verified
+                - author_blue_verified: Whether the author has Twitter Blue verification
+                - tweet_text: Content of the tweet
+                - created_at: When the tweet was created
+                - retweet_count, reply_count, like_count, quote_count, bookmark_count: Engagement metrics
+                - lang: Language of the tweet
+                - is_reply, is_quote, is_retweet: Tweet type flags
+                - url: URL to the tweet
+                - search_term: Term used to find this tweet
+                - sentiment_label, sentiment_score, sentiment_magnitude, weighted_sentiment: Sentiment analysis
+                - collected_at: When the tweet was collected
+                
+        Returns:
+            str: Tweet ID of the stored tweet
+        """
+        # Check if tweet already exists
+        existing = self.fetch_one(
+            "SELECT tweet_id FROM tweets WHERE tweet_id = ?", 
+            (tweet_data.get('tweet_id'),)
+        )
+        
+        if existing:
+            return existing[0]
+        
+        # Prepare query and parameters
+        columns = []
+        placeholders = []
+        values = []
+        
+        for key, value in tweet_data.items():
+            columns.append(key)
+            placeholders.append('?')
+            values.append(value)
+        
+        query = f"""
+            INSERT INTO tweets ({', '.join(columns)})
+            VALUES ({', '.join(placeholders)})
+        """
+        
+        cursor = self.execute_query(query, values, commit=True)
+        return tweet_data.get('tweet_id')
+    def get_stock_sentiment(self, stock_id, start_date=None, end_date=None):
+        """
+        Get stock sentiment data aggregated by date.
+        
+        Args:
+            stock_id (int): Stock ID to retrieve sentiment for
             start_date (str, optional): Start date in 'YYYY-MM-DD' format
             end_date (str, optional): End date in 'YYYY-MM-DD' format
             
         Returns:
-            dict: Dictionary with dates as keys and sentiment data as values
+            DataFrame: Sentiment data by date
         """
-        query = '''
-            SELECT 
-                date, news_sentiment_score, twitter_sentiment_score, 
-                combined_sentiment_score, sentiment_label, 
-                article_count, tweet_count
-            FROM 
-                stock_sentiment
-            WHERE 
-                stock_id = ?
-        '''
+        query = """
+            SELECT sentiment_id, stock_id, date, twitter_sentiment_score, news_sentiment_score, 
+                   combined_sentiment_score, sentiment_label, tweet_count, article_count
+            FROM stock_sentiment
+            WHERE stock_id = ?
+        """
         
         params = [stock_id]
         
@@ -325,57 +1230,120 @@ class Database:
         
         query += " ORDER BY date"
         
-        results = {}
+        sentiment_data = self.fetch_all(query, params)
+        columns = ['sentiment_id', 'stock_id', 'date', 'twitter_sentiment_score', 'news_sentiment_score', 
+                   'combined_sentiment_score', 'sentiment_label', 'tweet_count', 'article_count']
         
-        for row in self.connection.execute(query, params):
-            date_str = row[0]
-            results[date_str] = {
-                'news_sentiment': row[1],
-                'twitter_sentiment': row[2],
-                'combined_sentiment': row[3],
-                'sentiment_label': row[4],
-                'article_count': row[5],
-                'tweet_count': row[6]
-            }
+        df = pd.DataFrame(sentiment_data, columns=columns)
+        
+        # Convert date to datetime
+        if not df.empty and 'date' in df.columns:
+            df['date'] = pd.to_datetime(df['date'])
+            df.set_index('date', inplace=True)
+        
+        return df
+    
+    #################################################################################
+    # CONGIGURATION FUNCTIONS
+    #################################################################################
+    def get_configs(self, config_id=None, stock_id=None, timeframe_id=None):
+        """
+        Get configurations from the database.
+        
+        Args:
+            stock_id (int, optional): Filter by stock ID
+            timeframe_id (int, optional): Filter by timeframe ID
             
-        return results
+        Returns:
+            DataFrame: Configurations matching the criteria
+        """
+        query = "SELECT * FROM experiment_configs"
+        params = []
+        conditions = []
+        if config_id is not None:
+            conditions.append("config_id = ?")
+            params.append(config_id)
+        if stock_id is not None:
+            conditions.append("stock_id = ?")
+            params.append(stock_id)
+        if timeframe_id is not None:
+            conditions.append("timeframe_id = ?")
+            params.append(timeframe_id)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY config_id DESC"
+        configs = self.fetch_all(query, params if params else None)
+        # Get column names dynamically
+        cursor = self.connection.cursor()
+        cursor.execute(query, params if params else None)
+        columns = [column[0] for column in cursor.description]
+        cursor.close()
+        
+        df = pd.DataFrame(configs, columns=columns)
+        # Convert JSON strings to Python objects
+        return df
     
     #############################################################################
     # STATISTICS FUNCTIONS
     #############################################################################
-    def get_statistics(self):
+    def get_statistics(self, stock_id=None, timeframe_id=None):
         """
-        Get statistics of the clusters and patterns.
+        Get statistics about clusters and patterns.
         
+        Args:
+            stock_id (int, optional): Filter by stock ID
+            timeframe_id (int, optional): Filter by timeframe ID
+            
         Returns:
             dict: Statistics including total clusters, patterns, win rates, etc.
         """
-        # Get the clusters and patterns from the database
-        clusters = self.get_clusters_all()
-        patterns = self.get_patterns_all()
+        # Get clusters
+        clusters = self.get_clusters(stock_id, timeframe_id)
+        
+        # Get patterns
+        patterns = self.get_patterns(stock_id, timeframe_id)
         
         # Calculate statistics
         total_clusters = len(clusters)
         total_patterns = len(patterns)
-        avg_patterns_per_cluster = total_patterns / total_clusters if total_clusters > 0 else 0
-        avg_win_rate = clusters['ProbabilityScore'].mean() * 100  # Convert to percentage
-        avg_max_gain = clusters['MaxGain'].mean() * 100
-        avg_max_drawdown = clusters['MaxDrawdown'].mean() * 100
-        avg_reward_risk_ratio = clusters['RewardRiskRatio'].mean() 
-        avg_profit_factor = clusters['ProfitFactor'].mean()
         
-        # Get the best performing cluster   
-        best_cluster_idx = clusters['MaxGain'].idxmax()
-        best_cluster_return = clusters.loc[best_cluster_idx, 'MaxGain'] * 100
-        best_cluster_reward_risk_ratio = clusters.loc[best_cluster_idx, 'RewardRiskRatio']
-        best_cluster_profit_factor = clusters.loc[best_cluster_idx, 'ProfitFactor']
+        # Avoid division by zero
+        avg_patterns_per_cluster = total_patterns / total_clusters if total_clusters > 0 else 0
+        
+        # Cluster statistics
+        if not clusters.empty:
+            avg_win_rate = clusters['probability_score'].mean() * 100 if 'probability_score' in clusters else 0
+            avg_max_gain = clusters['max_gain'].mean() * 100 if 'max_gain' in clusters else 0
+            avg_max_drawdown = clusters['max_drawdown'].mean() * 100 if 'max_drawdown' in clusters else 0
+            avg_reward_risk_ratio = clusters['reward_risk_ratio'].mean() if 'reward_risk_ratio' in clusters else 0
+            avg_profit_factor = clusters['profit_factor'].mean() if 'profit_factor' in clusters else 0
+            
+            # Best cluster
+            if 'max_gain' in clusters and not clusters.empty:
+                best_cluster_idx = clusters['max_gain'].idxmax()
+                best_cluster_return = clusters.loc[best_cluster_idx, 'max_gain'] * 100
+                best_cluster_reward_risk_ratio = clusters.loc[best_cluster_idx, 'reward_risk_ratio']
+                best_cluster_profit_factor = clusters.loc[best_cluster_idx, 'profit_factor']
+            else:
+                best_cluster_return = 0
+                best_cluster_reward_risk_ratio = 0
+                best_cluster_profit_factor = 0
+        else:
+            avg_win_rate = 0
+            avg_max_gain = 0
+            avg_max_drawdown = 0
+            avg_reward_risk_ratio = 0
+            avg_profit_factor = 0
+            best_cluster_return = 0
+            best_cluster_reward_risk_ratio = 0
+            best_cluster_profit_factor = 0
         
         # Format the results
         results = {
             "Total Clusters": total_clusters,
             "Total Patterns": total_patterns,
             "Avg Patterns/Cluster": round(avg_patterns_per_cluster, 1),
-            "Avg Win Rate": avg_win_rate,
+            "Avg Win Rate": f"{round(avg_win_rate, 2)}%",
             "Avg Max Gain": f"{round(avg_max_gain, 2)}%",
             "Avg Max Drawdown": f"{round(avg_max_drawdown, 2)}%",
             "Avg Reward/Risk Ratio": round(avg_reward_risk_ratio, 2),
@@ -386,805 +1354,10 @@ class Database:
         }
         
         return results
-    
-    #############################################################################
-    # FILTER FUNCTIONS
-    #############################################################################
-    def filter_clusters(self, clusters):
-        """
-        Filter clusters based on probability score and risk-reward ratio.
-        
-        Args:
-            clusters (DataFrame): DataFrame containing cluster data
-            
-        Returns:
-            DataFrame: Filtered clusters
-        """
-        # Calculate Reward/Risk Ratio and Profit Factor for all rows at once (vectorized)
-        clusters['RewardRiskRatio'] = abs(clusters['MaxGain']) / (abs(clusters['MaxDrawdown']) + 1e-10)  # Avoid division by zero
-        clusters['ProfitFactor'] = (clusters['ProbabilityScore'] * clusters['RewardRiskRatio']) / (1 - clusters['ProbabilityScore'] + 1e-10)  # Avoid division by zero
-        
-        # Filter clusters where ProfitFactor >= 1.0
-        filtered_clusters = clusters[clusters['ProfitFactor'] >= 1.0].copy()
-        
-        return filtered_clusters
-            
-    #############################################################################
-    # DATA STORAGE FUNCTIONS
-    #############################################################################     
-    def store_stock_data(self, stock_data, stock_ID, stock_symbol, time_frame):
-        """
-        Store stock data in the database.
-        
-        Args:
-            stock_data (DataFrame): Stock data to store
-            stock_ID (int): ID of the stock
-            stock_symbol (str): Symbol of the stock
-            time_frame (int): Time frame in minutes
-        """
-        # Insert the data into the table
-        for i, (index, row) in enumerate(stock_data.iterrows(), start=0):
-            time_Stamp = index.strftime('%Y-%m-%d %H:%M:%S')
-            self.connection.execute('''
-                INSERT INTO stock_data (StockEntryID, StockID, StockSymbol, Timestamp,TimeFrame ,OpenPrice, ClosePrice, HighPrice, LowPrice, Volume)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (i, stock_ID, stock_symbol, time_Stamp, time_frame, row['Open'], row['Close'], row['High'], row['Low'], row['Volume'])) 
-        
-        # Commit the changes
-        self.connection.commit()
-        print(f"Stored stock data for {stock_ID} TimeFrame: {time_frame} in database.")
-        
-    def store_pattern_data(self, stock_ID, pip_pattern_miner):
-        """
-        Store pattern data in the database.
-        
-        Args:
-            stock_ID (int): ID of the stock
-            pip_pattern_miner: Pattern miner object containing pattern data
-        """
-        # Store patterns in the database and table patterns
-        for i, pattern in enumerate(pip_pattern_miner._unique_pip_patterns):
-            # Convert the pattern to string
-            pattern_str = ','.join([str(x) for x in pattern])
-            # Get the time span of the pattern
-            time_span = pip_pattern_miner._lookback
-            
-            # Determine market condition (Bullish, Bearish, Neutral)
-            first_point = pattern[0]
-            last_point = pattern[-1]
-            
-            if first_point < last_point:
-                market_condition = 'Bullish'
-            elif first_point > last_point:
-                market_condition = 'Bearish'
-            else:
-                market_condition = 'Neutral'
-                
-            # Get pattern return and determine label
-            pattern_ruturn = pip_pattern_miner._returns_fixed_hold[i]
-            
-            if pattern_ruturn > 0:
-                pattern_label = 'Buy'
-            elif pattern_ruturn < 0:
-                pattern_label = 'Sell'
-            else:
-                pattern_label = 'Neutral'
-                
-            # Calculate max gain and drawdown based on pattern label
-            if pattern_label == 'Buy':
-                pattern_max_gain = pip_pattern_miner._returns_mfe[i]
-                pattern_max_drawdown = pip_pattern_miner._returns_mae[i]
-            elif pattern_label == 'Sell':
-                pattern_max_gain = pip_pattern_miner._returns_mae[i]
-                pattern_max_drawdown = pip_pattern_miner._returns_mfe[i]
-            else:
-                pattern_max_gain = 0
-                pattern_max_drawdown = 0
-                    
-            # Insert the data into the table
-            self.connection.execute('''
-                INSERT INTO patterns (PatternID, StockID, PricePoints, TimeSpan, MarketCondition, Outcome, Label, MaxGain, MaxDrawdown)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (i, stock_ID, pattern_str, time_span, market_condition, pattern_ruturn, pattern_label, pattern_max_gain, pattern_max_drawdown))
-            
-        # Commit the changes
-        self.connection.commit()
-        
-    def store_cluster_data(self, stock_ID, pip_pattern_miner):
-        """
-        Store cluster data in the database.
-        
-        Args:
-            stock_ID (int): ID of the stock
-            pip_pattern_miner: Pattern miner object containing cluster data
-        """
-        # Store clusters in the database
-        for i, cluster in enumerate(pip_pattern_miner._cluster_centers):
-            # Convert the cluster to string
-            cluster_str = ','.join([str(x) for x in cluster])
-            
-            # Determine market condition (Bullish, Bearish, Neutral)
-            first_point = cluster[0]
-            last_point = cluster[-1]
-            
-            if first_point < last_point:
-                market_condition = 'Bullish'
-            elif first_point > last_point:
-                market_condition = 'Bearish'
-            else:
-                market_condition = 'Neutral'
-                
-            # Get cluster return and determine label
-            cluster_ruturn = pip_pattern_miner._cluster_returns[i]
-            
-            if cluster_ruturn > 0:
-                cluster_label = 'Buy'
-            elif cluster_ruturn < 0:
-                cluster_label = 'Sell'
-            else:
-                cluster_label = 'Neutral'
-                
-            # Get the pattern count of the cluster
-            pattern_count = len(pip_pattern_miner._pip_clusters[i])
-            
-            # Calculate max gain and drawdown based on cluster label
-            if cluster_label == 'Buy':
-                cluster_max_gain = pip_pattern_miner._cluster_mfe[i]
-                cluster_max_drawdown = pip_pattern_miner._cluster_mae[i]
-            elif cluster_label == 'Sell':
-                cluster_max_gain = pip_pattern_miner._cluster_mae[i]
-                cluster_max_drawdown = pip_pattern_miner._cluster_mfe[i]
-            else:
-                cluster_max_gain = 0
-                cluster_max_drawdown = 0
-                
-            # Insert the data into the table
-            self.connection.execute('''
-                INSERT INTO clusters (ClusterID, StockID, AVGPricePoints, MarketCondition, Outcome, Label, Pattern_Count, MaxGain, MaxDrawdown)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (i, stock_ID, cluster_str, market_condition, cluster_ruturn, cluster_label, pattern_count, cluster_max_gain, cluster_max_drawdown))
-           
-        # Commit the changes
-        self.connection.commit()
-    
-    def bind_pattern_cluster(self, stock_ID, pip_pattern_miner):
-        """
-        Bind pattern and cluster data. The patterns table contains a foreign key to the clusters table.
-        
-        Args:
-            stock_ID (int): ID of the stock
-            pip_pattern_miner: Pattern miner object containing pattern and cluster data
-        """
-        # Loop through the clusters and update patterns table
-        for i, cluster in enumerate(pip_pattern_miner._pip_clusters):
-            # Update the Pattern_Count in the clusters table
-            self.connection.execute('''
-                UPDATE clusters
-                SET Pattern_Count = ?
-                WHERE ClusterID = ? AND StockID = ?
-                ''', (len(cluster), i, stock_ID))
-            
-            # Update cluster ID in the patterns table
-            for pattern in cluster:
-                self.connection.execute('''
-                    UPDATE patterns
-                    SET ClusterID = ?
-                    WHERE PatternID = ? AND StockID = ?
-                ''', (i, pattern, stock_ID))
-                
-        # Commit the changes
-        self.connection.commit()
-        
-    def store_prediction_data(self, stock_ID, data):
-        """
-        Store prediction data in the database.
-        
-        Args:
-            stock_ID (int): ID of the stock
-            data (dict): Prediction data
-            
-        Returns:
-            int: ID of the inserted prediction
-        """
-        res = self.connection.execute('''
-            INSERT INTO Predictions (StockID, PatternID, NewsID, TweetID, PredictionDate, PredictedOutcome, ConfidenceLevel)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (stock_ID, data['pattern_metrics']['pattern_id'], 0, 0, data['date'], json.dumps(data), data['confidence']))
-                              
-        # Get the prediction id
-        prediction_id = res.lastrowid
-        # Commit the changes
-        self.connection.commit()
-        
-        return prediction_id
-        
-    def store_notification_data(self, user_id, prediction_id, sent_time, notification_type, status):
-        """
-        Store notification data in the database.
-        
-        Args:
-            user_id (int): ID of the user
-            prediction_id (int): ID of the prediction
-            sent_time (str): Time the notification was sent
-            notification_type (str): Type of notification
-            status (str): Status of the notification
-        """
-        # Insert data into the Notifications table
-        self.connection.execute('''
-            INSERT INTO Notifications (UserID, PredictionID, SentTime, NotificationType, Status)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (user_id, prediction_id, sent_time, notification_type, status))
-        
-        # Commit the changes
-        self.connection.commit()
 
-    def store_live_news_articles(self, date, authors, source_domain, source_name, title, summary, url, topics,
-                                 ticker_sentiment, overall_sentiment_label, overall_sentiment_score, event_type,
-                                 sentiment_label, sentiment_score, fetch_timestamp):
-        """
-        Store live news articles in the database.
-        
-        Args:
-            Multiple parameters for news article data
-        """
-        try:
-            self.connection.execute('''
-                INSERT INTO live_articles (Date, Authors, Source_Domain, Source_Name, Title, Summary, Url, Topics, 
-                                         Ticker_Sentiment, Overall_Sentiment_Label, Overall_Sentiment_Score, 
-                                         Event_Type, Sentiment_Label, Sentiment_Score, Fetch_Timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (date, authors, source_domain, source_name, title, summary, url, topics, ticker_sentiment,
-                  overall_sentiment_label, overall_sentiment_score, event_type, sentiment_label, sentiment_score,
-                  fetch_timestamp))
-            self.connection.commit()
-        except sqlitecloud.Error as e:
-            print(f"An error occurred: {e}")
-
-    def store_tweets(self, ticker_id, tweet_id, tweet_text, created_at, retweet_count, reply_count, like_count,
-                     quote_count, bookmark_count, lang, is_reply, is_quote, is_retweet, url, search_term, author_username,
-                     author_name, author_verified, author_blue_verified, author_followers,
-                     author_following, sentiment_label, sentiment_score, sentiment_magnitude, weighted_sentiment,
-                     collected_at):
-        """
-        Store tweets in the database.
-        
-        Args:
-            Multiple parameters for tweet data
-        """
-        try:
-            self.connection.execute('''
-                INSERT INTO tweets (ticker_id, tweet_id, tweet_text, created_at, retweet_count, reply_count, like_count, 
-                                  quote_count, bookmark_count, lang, is_reply, is_quote, is_retweet, url, search_term, 
-                                  author_username, author_name, author_verified, author_blue_verified, author_followers, 
-                                  author_following, sentiment_label, sentiment_score, sentiment_magnitude, weighted_sentiment, 
-                                  collected_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-                           (ticker_id, tweet_id, tweet_text, created_at, retweet_count, reply_count, like_count,
-                            quote_count, bookmark_count, lang, is_reply, is_quote, is_retweet, url, search_term,
-                            author_username, author_name, author_verified, author_blue_verified,
-                            author_followers, author_following, sentiment_label, sentiment_score,
-                            sentiment_magnitude, weighted_sentiment, collected_at))
-            self.connection.commit()
-        except sqlitecloud.Error as e:
-            return
-            print(f"An error occurred: {e}")
-    
-    #############################################################################
-    # DATA RETRIEVAL FUNCTIONS
-    #############################################################################
-    def get_stock_data(self, stock_ID, time_frame=60):
-        """
-        Get stock data from the database.
-        
-        Args:
-            stock_ID (int): ID of the stock
-            time_frame (int): Time frame in minutes
-            
-        Returns:
-            DataFrame: Stock data
-        """
-        # Get stock data from the database
-        stock_data = self.connection.execute(f'''
-            SELECT * FROM stock_data WHERE StockID = {stock_ID} AND TimeFrame = {time_frame}
-        ''').fetchall()
-        
-        # Convert to DataFrame and process
-        stock_data = pd.DataFrame(stock_data, columns=['StockEntryID', 'StockID', 'StockSymbol', 'Timestamp', 'TimeFrame', 'OpenPrice', 'ClosePrice', 'HighPrice', 'LowPrice'])
-        stock_data['Timestamp'] = pd.to_datetime(stock_data['Timestamp'])
-        stock_data.set_index('Timestamp', inplace=True)
-        stock_data.sort_index(inplace=True)
-        
-        return stock_data
-    
-    def get_stock_data_range(self, stock_ID, start_date, end_date, time_frame=60):
-        """
-        Get stock data for a specific date range.
-        
-        Args:
-            stock_ID (int): ID of the stock
-            start_date (str): Start date in format 'YYYY-MM-DD'
-            end_date (str): End date in format 'YYYY-MM-DD'
-            time_frame (int): Time frame in minutes
-            
-        Returns:
-            DataFrame: Stock data within the specified range
-        """
-        # Get stock data from the database for the specified range
-        stock_data = self.connection.execute(f'''
-            SELECT * 
-            FROM stock_data 
-            WHERE 
-                StockID = {stock_ID}
-                AND Timestamp >= '{start_date}'
-                AND Timestamp <= '{end_date}'
-                AND TimeFrame = {time_frame}
-        ''').fetchall()
-        
-        # Convert to DataFrame and process
-        stock_data = pd.DataFrame(stock_data, columns=['StockEntryID', 'StockID', 'StockSymbol', 'Timestamp', 'TimeFrame', 'OpenPrice', 'ClosePrice', 'HighPrice', 'LowPrice'])
-        stock_data['Timestamp'] = pd.to_datetime(stock_data['Timestamp'])
-        stock_data.set_index('Timestamp', inplace=True)
-        stock_data.sort_index(inplace=True)     
-        
-        return stock_data
-
-    def get_stock_data_by_date_and_period(self, stock_ID, date, period):
-        """
-        Get stock data for a specific date and period.
-        
-        Args:
-            stock_ID (int): ID of the stock
-            date (str): Date in format 'YYYY-MM-DD'
-            period (int): Number of days back to retrieve data
-            
-        Returns:
-            DataFrame: Stock data for the specified period
-        """
-        from_date = pd.to_datetime(date) - pd.Timedelta(days=period)
-        to_date = pd.to_datetime(date)
-        
-        # Get stock data from the database
-        stock_data = self.connection.execute(f'''
-            SELECT * FROM stock_data WHERE StockID = {stock_ID} AND Timestamp BETWEEN '{from_date}' AND '{to_date}'
-        ''').fetchall()
-        
-        # Convert to DataFrame and process
-        stock_data = pd.DataFrame(stock_data, columns=['StockEntryID', 'StockID', 'StockSymbol', 'Timestamp', 'TimeFrame', 'OpenPrice', 'ClosePrice', 'HighPrice', 'LowPrice'])
-        stock_data['Timestamp'] = pd.to_datetime(stock_data['Timestamp'])
-        stock_data.set_index('Timestamp', inplace=True)
-        stock_data.sort_index(inplace=True)
-        
-        return stock_data
-    
-    def get_patterns_by_stock_id(self, stock_ID):
-        """
-        Get patterns for a specific stock.
-        
-        Args:
-            stock_ID (int): ID of the stock
-            
-        Returns:
-            DataFrame: Patterns for the specified stock
-        """
-        # Get patterns from the database
-        patterns = self.connection.execute(f'''
-            SELECT * FROM patterns WHERE StockID = {stock_ID}
-        ''').fetchall()
-        
-        # Convert to DataFrame
-        patterns = pd.DataFrame(patterns, columns=['PatternID', 'StockID', 'ClusterID', 'PricePoints', 'TimeSpan', 'MarketCondition', 'Outcome', 'Label', 'MaxGain', 'MaxDrawdown'])
- 
-        return patterns
-    
-    def get_patterns_all(self):
-        """
-        Get all patterns from the database.
-        
-        Returns:
-            DataFrame: All patterns
-        """
-        # Get all patterns from the database
-        patterns = self.connection.execute(f'''
-            SELECT * FROM patterns
-        ''').fetchall()
-        
-        # Convert to DataFrame
-        patterns = pd.DataFrame(patterns, columns=['PatternID', 'StockID', 'ClusterID', 'PricePoints', 'TimeSpan', 'MarketCondition', 'Outcome', 'Label', 'MaxGain', 'MaxDrawdown'])
- 
-        return patterns
-    
-    def get_clusters_by_stock_id(self, stock_ID):
-        """
-        Get clusters for a specific stock.
-        
-        Args:
-            stock_ID (int): ID of the stock
-            
-        Returns:
-            DataFrame: Filtered clusters for the specified stock
-        """
-        # Get clusters from the database
-        clusters = self.connection.execute(f'''
-            SELECT * FROM clusters WHERE StockID = {stock_ID}
-        ''').fetchall()
-        
-        # Convert to DataFrame
-        clusters = pd.DataFrame(clusters, columns=['ClusterID', 'StockID', 'AVGPricePoints', 'MarketCondition', 'Outcome', 'Label','ProbabilityScore',  'Pattern_Count', 'MaxGain', 'MaxDrawdown'])
-       
-        return self.filter_clusters(clusters)
-    
-    def get_clusters_all(self):
-        """
-        Get all clusters from the database.
-        
-        Returns:
-            DataFrame: Filtered clusters
-        """
-        # Get all clusters from the database
-        clusters = self.connection.execute(f'''
-            SELECT * FROM clusters 
-        ''').fetchall()
-        
-        # Convert to DataFrame
-        clusters = pd.DataFrame(clusters, columns=['ClusterID', 'StockID', 'AVGPricePoints', 'MarketCondition', 'Outcome', 'Label','ProbabilityScore',  'Pattern_Count', 'MaxGain', 'MaxDrawdown'])
-       
-        return self.filter_clusters(clusters)
-
-    def get_cluster_probability_score(self, stock_id, cluster_id):
-        """
-        Calculate the probability score for a cluster.
-        
-        Args:
-            stock_id (int): ID of the stock
-            cluster_id (int): ID of the cluster
-            
-        Returns:
-            float: Probability score
-        """
-        # Get patterns belonging to the cluster
-        patterns = self.connection.execute(f'''
-            SELECT Outcome FROM patterns WHERE ClusterID = {cluster_id} AND StockID = {stock_id}
-        ''').fetchall()
-        
-        # Convert to DataFrame
-        patterns = pd.DataFrame(patterns, columns=['Outcome'])
-        
-        # Calculate statistics
-        total_positive_returns = (patterns['Outcome'] > 0).sum()
-        total_negative_returns = (patterns['Outcome'] < 0).sum()
-        total_patterns = len(patterns)
-       
-        # Get cluster label
-        cluster_label = pd.read_sql_query(f'''
-            SELECT Label FROM clusters WHERE ClusterID = {cluster_id} AND StockID = {stock_id}
-        ''', self.connection)
-        
-        # Calculate probability score based on label
-        if cluster_label.iloc[0]['Label'] == 'Buy':
-            probability_score = total_positive_returns / total_patterns
-        elif cluster_label.iloc[0]['Label'] == 'Sell':
-            probability_score = total_negative_returns / total_patterns
-        else:
-            probability_score = 0.5
-            
-        return probability_score
-    
-    def get_prediction_data(self, stock_ID):
-        """
-        Get prediction data for a specific stock.
-        
-        Args:
-            stock_ID (int): ID of the stock
-            
-        Returns:
-            DataFrame: Prediction data
-        """
-        # Get prediction data from the database
-        prediction_data = self.connection.execute(f'''
-            SELECT * FROM Prediction WHERE stock_id = {stock_ID}
-        ''').fetchall()
-        
-        # Convert to DataFrame
-        prediction_data = pd.DataFrame(prediction_data, columns=['PredictionID','StockID' ,'PatternID', 'SentimentID','PredictionData' ,'PredictedOutcome' ,'ConfidenceLevel'])
-        
-        # Parse JSON data
-        prediction_data['PredictionData'] = prediction_data['PredictionData'].apply(json.loads)
-        
-        return prediction_data
-    
-    def get_notification_data(self, user_id):
-        """
-        Get notification data for a specific user.
-        
-        Args:
-            user_id (int): ID of the user
-            
-        Returns:
-            DataFrame: Notification data
-        """
-        # Get notification data from the database
-        notification_data = self.connection.execute(f'''
-            SELECT * FROM Notifications WHERE UserID = {user_id}
-        ''').fetchall()
-        
-        # Convert to DataFrame
-        notification_data = pd.DataFrame(notification_data, columns=['NotificationID', 'UserID', 'PredictionID', 'SentTime', 'NotificationType', 'Status'])
-        
-        return notification_data
-
-    def get_news_articles(self):
-        """
-        Get all news articles from the database.
-        
-        Returns:
-            DataFrame: News articles
-        """
-        # Get news articles from the database
-        news_articles = self.connection.execute('''
-            SELECT * FROM articles
-        ''').fetchall()
-        
-        # Convert date to datetime
-        news_articles['Date'] = pd.to_datetime(news_articles['Date'])
-        
-        return news_articles
-
-    def get_live_news_articles(self):
-        """
-        Get live news articles from the database.
-        
-        Returns:
-            DataFrame: Live news articles
-        """
-        # Get live news articles from the database
-        live_news_articles = self.connection.execute('''
-            SELECT * FROM live_articles WHERE ID > 12153
-        ''').fetchall()
-        
-        # Convert to DataFrame
-        live_news_articles = pd.DataFrame(live_news_articles, columns=['ID', 'Date', 'Authors', 'Source_Domain', 'Source_Name', 'Title', 'Summary', 'Url', 'Topics', 'Ticker_Sentiment', 'Overall_Sentiment_Label', 'Overall_Sentiment_Score', 'Event_Type', 'Sentiment_Label', 'Sentiment_Score', 'Fetch_Timestamp'])
-        
-        # Convert date to datetime
-        live_news_articles['Date'] = pd.to_datetime(live_news_articles['Date'])
-        
-        return live_news_articles
-
-    def get_tweets(self):
-        """
-        Get all tweets from the database.
-        
-        Returns:
-            DataFrame: Tweets
-        """
-        # Get tweets from the database
-        tweets = self.connection.execute('''
-            SELECT * FROM tweets
-        ''').fetchall()
-        
-        # Convert to DataFrame
-        tweets = pd.DataFrame(tweets, columns=['ID', 'ticker_id', 'tweet_id', 'tweet_text', 'created_at', 'retweet_count', 'reply_count', 'like_count', 'quote_count', 'bookmark_count', 'lang', 'is_reply', 'is_quote', 'is_retweet', 'url', 'search_term', 'author_username', 'author_name', 'author_verified', 'author_blue_verified', 'author_followers', 'author_following', 'sentiment_label', 'sentiment_score', 'sentiment_magnitude', 'weighted_sentiment', 'collected_at'])
-        
-        # Convert date to datetime
-        tweets['created_at'] = pd.to_datetime(tweets['created_at'])
-        
-        return tweets
-
-    def get_tweets_by_date_and_ticker(self, start_date, end_date, ticker_id):
-        """
-        Get tweets for a specific date range and ticker.
-        
-        Args:
-            start_date (str): Start date in format 'YYYY-MM-DD'
-            end_date (str): End date in format 'YYYY-MM-DD'
-            ticker_id (int): ID of the ticker
-            
-        Returns:
-            DataFrame: Tweets for the specified date range and ticker
-        """
-        # Get tweets from the database
-        tweets = self.connection.execute('''
-            SELECT * FROM tweets
-            WHERE created_at BETWEEN ? AND ? AND ticker_id = ?
-        ''', (start_date, end_date, ticker_id)).fetchall()
-        
-        # Convert to DataFrame
-        tweets = pd.DataFrame(tweets, columns=['ID', 'ticker_id', 'tweet_id', 'tweet_text', 'created_at', 'retweet_count', 'reply_count', 'like_count', 'quote_count', 'bookmark_count', 'lang', 'is_reply', 'is_quote', 'is_retweet', 'url', 'search_term', 'author_username', 'author_name', 'author_verified', 'author_blue_verified', 'author_followers', 'author_following', 'sentiment_label', 'sentiment_score', 'sentiment_magnitude', 'weighted_sentiment', 'collected_at'])
-        
-        return tweets
-
-    def get_tweets_count_by_date_and_ticker(self, start_date, end_date, ticker_id):
-        """
-        Get tweet counts by date and ticker.
-        
-        Args:
-            start_date (str): Start date in format 'YYYY-MM-DD'
-            end_date (str): End date in format 'YYYY-MM-DD'
-            ticker_id (int): ID of the ticker
-            
-        Returns:
-            DataFrame: Tweet counts grouped by date
-        """
-        # Get tweet counts grouped by date
-        tweets = self.connection.execute('''
-            SELECT DATE(created_at) AS date, ticker_id, COUNT(*) AS tweet_count
-            FROM tweets
-            WHERE created_at BETWEEN ? AND ? AND ticker_id = ?
-            GROUP BY DATE(created_at), ticker_id
-            ORDER BY DATE(created_at) ASC
-        ''', (start_date, end_date, ticker_id)).fetchall()
-        
-        # Convert to DataFrame
-        tweets = pd.DataFrame(tweets, columns=['date', 'ticker_id', 'tweet_count'])
-        
-        return tweets
-    
-    #############################################################################
-    # UPDATE FUNCTIONS
-    #############################################################################
-    def update_cluster_probability_score_based_on_patterns(self, stock_id, cluster_id):
-        """
-        Update the probability score for a cluster based on its patterns.
-        
-        Args:
-            stock_id (int): ID of the stock
-            cluster_id (int): ID of the cluster
-            
-        Returns:
-            float: Updated probability score
-        """
-        probability_score = self.get_cluster_probability_score(stock_id, cluster_id)
-        
-        # Update the cluster probability score
-        self.connection.execute('''
-            UPDATE clusters
-            SET ProbabilityScore = ?
-            WHERE ClusterID = ? AND StockID = ?
-        ''', (probability_score, cluster_id, stock_id))
-        
-        # Commit the changes
-        self.connection.commit()
-        
-        return probability_score
-    
-    def update_all_cluster_probability_score(self, stock_id, pip_pattern_miner):
-        """
-        Update all cluster probability scores for a stock.
-        
-        Args:
-            stock_id (int): ID of the stock
-            pip_pattern_miner: Pattern miner object
-        """
-        # Update probability scores for all clusters
-        for i in range(len(pip_pattern_miner._cluster_centers)):
-            self.update_cluster_probability_score_based_on_patterns(stock_id, i)
-
-    def update_tweet_sentiment(self, tweet_id, sentiment_label, sentiment_score, sentiment_magnitude, weighted_sentiment):
-        """
-        Update sentiment data for an existing tweet.
-        
-        Args:
-            tweet_id (str): ID of the tweet
-            sentiment_label (str): Sentiment label (positive, negative, neutral)
-            sentiment_score (float): Sentiment score
-            sentiment_magnitude (float): Sentiment magnitude
-            weighted_sentiment (float): Weighted sentiment score
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            self.connection.execute('''
-                UPDATE tweets 
-                SET sentiment_label = ?, 
-                    sentiment_score = ?, 
-                    sentiment_magnitude = ?, 
-                    weighted_sentiment = ?
-                WHERE tweet_id = ?
-            ''', (sentiment_label, sentiment_score, sentiment_magnitude, weighted_sentiment, tweet_id))
-            
-            # Check if any rows were affected
-            rows_affected = self.connection.total_changes
-            if rows_affected == 0:
-                print(f"Warning: No tweet found with ID {tweet_id}")
-                return False
-                
-            self.connection.commit()
-            return True
-            
-        except sqlitecloud.Error as e:
-            print(f"Database error updating tweet {tweet_id}: {e}")
-            return False
-
-    #############################################################################
-    # STOCK MANAGEMENT FUNCTIONS
-    #############################################################################
-    def get_stock_id(self, symbol):
-        """
-        Get the stock ID for a given symbol.
-        
-        Args:
-            symbol (str): The stock symbol to look up
-            
-        Returns:
-            int: The stock ID, or None if not found
-        """
-        return self.stock_manager.get_stock_id(symbol)
-    
-    def get_stock_symbol(self, stock_id):
-        """
-        Get the stock symbol for a given ID.
-        
-        Args:
-            stock_id (int): The stock ID to look up
-            
-        Returns:
-            str: The stock symbol, or None if not found
-        """
-        return self.stock_manager.get_stock_symbol(stock_id)
-    
-    def get_stocks(self):
-        """
-        Get all stocks as a dictionary of ID to symbol mappings.
-        
-        Returns:
-            dict: Dictionary with stock IDs as keys and symbols as values
-        """
-        return self.stock_manager.get_all_stocks()
-    
-    def get_api_symbol(self, symbol):
-        """
-        Get the API-specific symbol for a given internal symbol.
-        
-        Args:
-            symbol (str): The internal stock symbol
-            
-        Returns:
-            str: The API-specific symbol, or the original symbol if no mapping exists
-        """
-        return self.stock_manager.get_api_symbol(symbol)
-    
-    def get_internal_symbol(self, api_symbol):
-        """
-        Get the internal symbol for a given API-specific symbol.
-        
-        Args:
-            api_symbol (str): The API-specific symbol
-            
-        Returns:
-            str: The internal symbol, or the original API symbol if no mapping exists
-        """
-        return self.stock_manager.get_internal_symbol(api_symbol)
-    
-    def add_stock(self, symbol, stock_id=None):
-        """
-        Add a new stock to the system.
-        
-        Args:
-            symbol (str): The stock symbol to add
-            stock_id (int, optional): The stock ID to use. If None, uses the next available ID.
-            
-        Returns:
-            int: The stock ID that was assigned
-        """
-        return self.stock_manager.add_stock(symbol, stock_id)
-
-#############################################################################
-# MAIN EXECUTION
-#############################################################################
-# Main function to create the database and tables
+# Main function to test the database connection
 if __name__ == '__main__':
     db = Database()
-    data = db.get_stock_data_by_date_and_period(3, '2023-01-01', 5)
-    
-    date_datetime = pd.to_datetime('2023-01-01')
-    start_time = date_datetime - pd.Timedelta(hours=25)
-    window = data.loc[(data.index >= start_time) & (data.index <= date_datetime)]
-    if window.empty:
-            start_time = date_datetime - pd.Timedelta(hours=50)
-            window = data.loc[(data.index >= start_time) & (data.index <= date_datetime)]
-    window_prices = np.array(window['ClosePrice'])
-    print(window_prices.flatten())
+    tables = db.get_tweets(stock_id=1, limit=5)
+    print(f"Database tables: {tables}")
     db.close()
-
-
-

@@ -39,9 +39,10 @@ sys.path.append(os.path.dirname(parent_dir))
 # Import custom modules
 from Data.Database.db import Database
 from Experements.Backtesting.backtest_config import BacktestConfig, RecognitionTechnique, ExitStrategy
-from Experements.Backtesting.pattern_recognition import (
-    extract_pips, create_recognizer, pattern_matcher, PatternRecognizer
+from Pattern.Utils.multi_config_recognizer import (
+    extract_pips, ConfigBasedRecognizer, pattern_matcher
 )
+from Experements.Backtesting.db_extensions import Database as ExtendedDatabase
 from Experements.Backtesting.trade_strategies import (
     TradeStrategy, PatternBasedStrategy, VotingEnsembleStrategy,
     TradeType, ExitReason, simulate_trade
@@ -50,12 +51,10 @@ from Experements.Backtesting.performance_metrics import (
     calculate_performance_metrics, store_performance_metrics,
     PerformanceMetrics, create_performance_report
 )
-from Experements.Backtesting.database_schema import setup_all_tables
 
 
 class Backtester:
     """Main backtesting engine."""
-    
     def __init__(self, db: Database, config: BacktestConfig):
         """
         Initialize the backtester.
@@ -67,16 +66,24 @@ class Backtester:
         self.db = db
         self.config = config
         
-        # Set up database tables
-        setup_all_tables(db.connection)
+        
+        # Create extended database for multi-config support
+        try:
+            self.ext_db = ExtendedDatabase()
+        except:
+            self.ext_db = db  # Fallback
         
         # Load data
         self.train_df = None
         self.test_df = None
         self.clusters_df = None
-        
         # Initialize components
+     
+        recognition_str = config.recognition_technique 
+            
+        self.multi_recognizer = ConfigBasedRecognizer(self.ext_db, default_technique=recognition_str)
         self.pattern_recognizer = None
+        self.feature_length = None
         self.trade_strategy = None
         
         # Results
@@ -84,7 +91,7 @@ class Backtester:
         self.equity_curve = None
         self.returns = None
         self.metrics = None
-        
+
     def load_data(self) -> None:
         """Load and prepare data for backtesting."""
         print(f"Loading data for Stock ID {self.config.stock_id}, Timeframe ID {self.config.timeframe_id}")
@@ -107,41 +114,36 @@ class Backtester:
         
         print(f"Loaded {len(self.train_df)} training records and {len(self.test_df)} test records")
         
-        # Load cluster data from DB
-        self.clusters_df = self.db.get_clusters_by_stock_id(self.config.stock_id)
-        
-        if self.clusters_df.empty:
-            raise ValueError(f"No clusters found for Stock ID {self.config.stock_id}")
-        
-        print(f"Loaded {len(self.clusters_df)} clusters")
-    
+        # Cluster data is loaded in setup_pattern_recognizer using the ConfigBasedRecognizer    
     def setup_pattern_recognizer(self) -> None:
-        """Set up the pattern recognizer based on configuration."""
-        print(f"Setting up {self.config.recognition_technique.value} pattern recognizer")
         
-        # Create recognizer based on technique
-        self.pattern_recognizer = create_recognizer(
-            self.config.recognition_technique.value,
-            **self.config.model_params
-        )
+        technique_display = self.config.recognition_technique
+            
+        print(f"Setting up {technique_display} pattern recognizer")
+          # Create a config-specific recognizer
+        config_id = self.config.config_id
         
-        # Prepare cluster data for training
-        cluster_features = self.clusters_df['AVGPricePoints'].values
-        cluster_features = np.array([np.array(x.split(','), dtype=float) for x in cluster_features])
-        labels = np.array([i for i in range(len(cluster_features))])
-        
-        # Train the recognizer
-        self.pattern_recognizer.train(cluster_features, labels)
-        
-        print(f"Pattern recognizer trained with {len(labels)} clusters")
-    
+        try:
+            self.pattern_recognizer, self.feature_length, self.clusters_df = self.multi_recognizer.get_or_create_recognizer(
+                self.config.stock_id,
+                self.config.timeframe_id,
+                config_id,
+                self.config.n_pips
+            )
+            
+            print(f"Pattern recognizer initialized with feature_length={self.feature_length}")
+            print(f"Using {len(self.clusters_df)} clusters for recognition")
+        except Exception as e:
+            print(f"Error setting up pattern recognizer: {e}")
+            raise
+
     def setup_trade_strategy(self) -> None:
         """Set up the trade strategy based on configuration."""
-        print(f"Setting up trade strategy with {self.config.exit_strategy.value} exit strategy")
+        print(f"Setting up trade strategy with {self.config.exit_strategy} exit strategy")
         
         # Create a pattern matcher function
         def matcher_function(data, i):
-            window = data['ClosePrice'].values[i - self.config.lookback:i + 1]
+            window = data['close_price'].values[i - self.config.lookback:i + 1]
             return pattern_matcher(
                 self.pattern_recognizer,
                 self.clusters_df,
@@ -151,6 +153,8 @@ class Backtester:
                 mse_threshold=self.config.mse_threshold
             )
         
+        technique_display = self.config.recognition_technique
+            
         # Create strategy based on exit type
         if self.config.exit_strategy == ExitStrategy.FIXED:
             self.trade_strategy = PatternBasedStrategy(
@@ -158,22 +162,22 @@ class Backtester:
                 fixed_tp_pct=self.config.fixed_tp_pct,
                 fixed_sl_pct=self.config.fixed_sl_pct,
                 min_reward_risk=self.config.reward_risk_min,
-                name=f"{self.config.recognition_technique.value} Strategy"
+                name=f"{technique_display} Strategy"
             )
         elif self.config.exit_strategy == ExitStrategy.PATTERN_BASED:
             self.trade_strategy = PatternBasedStrategy(
                 pattern_matcher=matcher_function,
                 min_reward_risk=self.config.reward_risk_min,
-                name=f"{self.config.recognition_technique.value} Pattern-Based Strategy"
+                name=f"{technique_display} Pattern-Based Strategy"
             )
         else:
             # Default to pattern-based
             self.trade_strategy = PatternBasedStrategy(
                 pattern_matcher=matcher_function,
                 min_reward_risk=self.config.reward_risk_min,
-                name=f"{self.config.recognition_technique.value} Default Strategy"
+                name=f"{technique_display} Default Strategy"
             )
-    
+
     def run_backtest(self) -> Dict[str, Any]:
         """
         Run the backtest and return results.
@@ -184,7 +188,7 @@ class Backtester:
         print(f"Running backtest for {self.config.test_start} to {self.config.test_end}")
         
         # Set up results containers
-        prices = self.test_df['ClosePrice'].values
+        prices = self.test_df['close_price'].values
         self.returns = np.zeros(len(self.test_df))
         self.equity_curve = [1.0]  # Start with 1 unit
         trade_results = []
@@ -279,17 +283,19 @@ class Backtester:
             
             # Record trade results
             trade_return_pct = (profit_loss / entry_price) * 100
+            is_win = profit_loss > 0
             
             trade_details = {
                 'entry_time': entry_time,
                 'exit_time': self.test_df.index[min(i + trade_duration, len(self.test_df) - 1)],
-                'type': trade_type.value,
+                'type': trade_type,
                 'entry_price': entry_price,
                 'exit_price': exit_price,
                 'return_pct': trade_return_pct,
                 'profit_loss': profit_loss,
-                'outcome': 'win' if profit_loss > 0 else 'loss',
-                'reason': exit_reason.value,
+                'outcome': 'win' if is_win else 'loss',
+                'outcome_str': 'win' if is_win else 'loss',  # Ensure this is present
+                'reason': exit_reason,
                 'duration': trade_duration,
                 'cluster_id': pattern_info.get('cluster_id'),
                 'max_gain': pattern_info.get('max_gain'),
@@ -305,22 +311,17 @@ class Backtester:
             
             # Update equity curve
             self.equity_curve.append(self.equity_curve[-1] * (1 + self.returns[exit_idx]))
-        
-        # Create DataFrame from trade results
+          # Create DataFrame from trade results
         self.trades_df = pd.DataFrame(trade_results)
         
+        # Ensure outcome column exists for metrics calculation
+        if not self.trades_df.empty and 'outcome' not in self.trades_df.columns:
+            self.trades_df['outcome'] = self.trades_df['profit_loss'].apply(
+                lambda x: 'win' if x > 0 else 'loss'
+            )
+        
         # Calculate performance metrics
-        self.metrics = calculate_performance_metrics(
-            self.trades_df,
-            self.equity_curve,
-            self.returns,
-            self.config.stock_id,
-            self.config.timeframe_id,
-            self.config.config_id if hasattr(self.config, 'config_id') else 0,
-            self.config.test_start,
-            self.config.test_end,
-            self.config.recognition_technique.value
-        )
+        self.metrics = self.calculate_metrics()
         
         # Store metrics in the database
         metric_id = store_performance_metrics(self.db, self.metrics)
@@ -333,8 +334,107 @@ class Backtester:
             'returns': self.returns,
             'metrics': self.metrics,
             'unique_patterns_used': len(unique_patterns_seen) if unique_patterns_seen else 0
-        }
-    
+        }    
+    def calculate_metrics(self) -> PerformanceMetrics:
+        """
+        Calculate performance metrics from the backtest results.
+        
+        Returns:
+            PerformanceMetrics object
+        """
+        if self.trades_df is None or self.equity_curve is None:
+            raise ValueError("Backtest must be run before calculating metrics")        # Get a display string for the recognition technique
+        if hasattr(self.config.recognition_technique, 'values'):
+            # If it still has values attribute (old enum style)
+            technique_display = self.config.recognition_technique.values
+        elif hasattr(self.config.recognition_technique, 'value'):
+            # If it's a normal enum
+            technique_display = self.config.recognition_technique.value  
+        else:
+            # It's already a string
+            technique_display = self.config.recognition_technique
+            
+        # Handle empty trades DataFrame
+        if self.trades_df.empty:
+            print("Warning: No trades were executed during the backtest")
+            # Create basic metrics with zero trades
+            self.metrics = PerformanceMetrics(
+                stock_id=self.config.stock_id,
+                timeframe_id=self.config.timeframe_id,
+                config_id=self.config.config_id or 0,
+                start_date=self.config.test_start.strftime('%Y-%m-%d'),
+                end_date=self.config.test_end.strftime('%Y-%m-%d'),
+                recognition_technique=technique_display,
+                total_trades=0,
+                win_count=0,
+                loss_count=0,
+                win_rate=0.0,
+                avg_win=0.0,
+                avg_loss=0.0,
+                max_consecutive_wins=0,
+                max_consecutive_losses=0,
+                profit_factor=0.0,
+                sharpe_ratio=0.0,
+                sortino_ratio=0.0,
+                max_drawdown=0.0,
+                total_return_pct=0.0,
+                annualized_return_pct=0.0,
+                volatility=0.0,
+                calmar_ratio=0.0,
+                avg_trade_duration=0.0
+            )
+            return self.metrics
+            
+        # Fix any missing outcome_str values
+        if 'outcome_str' not in self.trades_df.columns:
+            if 'outcome' in self.trades_df.columns:
+                # Convert numeric outcome to string if needed
+                if pd.api.types.is_numeric_dtype(self.trades_df['outcome']):
+                    self.trades_df['outcome_str'] = self.trades_df['outcome'].apply(
+                        lambda x: 'win' if x > 0 else 'loss')
+                else:
+                    self.trades_df['outcome_str'] = self.trades_df['outcome']
+            elif 'profit_loss' in self.trades_df.columns:
+                # Create outcome based on profit_loss
+                self.trades_df['outcome_str'] = self.trades_df['profit_loss'].apply(
+                    lambda x: 'win' if x > 0 else 'loss')
+                self.trades_df['outcome'] = self.trades_df['outcome_str']
+            elif 'return_pct' in self.trades_df.columns:
+                # Create outcome based on return_pct
+                self.trades_df['outcome_str'] = self.trades_df['return_pct'].apply(
+                    lambda x: 'win' if x > 0 else 'loss')
+                self.trades_df['outcome'] = self.trades_df['outcome_str']
+            else:
+                # No valid column found to determine outcome
+                print("Warning: No valid column found to determine trade outcomes.")
+                self.trades_df['outcome'] = 'unknown'
+                self.trades_df['outcome_str'] = 'unknown'
+              # Calculate metrics
+        # Get a display string for the recognition technique
+        if hasattr(self.config.recognition_technique, 'values'):
+            # If it still has values attribute (old enum style)
+            technique_display = self.config.recognition_technique.values
+        elif hasattr(self.config.recognition_technique, 'value'):
+            # If it's a normal enum
+            technique_display = self.config.recognition_technique.value  
+        else:
+            # It's already a string
+            technique_display = self.config.recognition_technique
+            
+        self.metrics = calculate_performance_metrics(
+            self.trades_df,
+            self.equity_curve,
+            self.returns,
+            self.config.stock_id,
+            self.config.timeframe_id,
+            self.config.config_id or 0,
+            self.config.test_start,
+            self.config.test_end,
+            technique_display
+        )
+        
+        return self.metrics
+
     def generate_report(self, save_path: Optional[str] = None) -> str:
         """
         Generate a performance report.
@@ -434,11 +534,12 @@ class Backtester:
 def run_backtest(
     db: Database,
     stock_id: int,
-    timeframe_id: int,
+    
     train_start: pd.Timestamp,
     train_end: pd.Timestamp,
     test_start: pd.Timestamp,
     test_end: pd.Timestamp,
+    timeframe_id: int=7,
     recognition_technique: str = "svm",
     n_pips: int = 5,
     lookback: int = 24,
@@ -472,41 +573,62 @@ def run_backtest(
     # Check if using a stored configuration
     if config_id is not None:
         # Load configuration from database
-        cursor = db.connection.cursor()
-        cursor.execute("SELECT * FROM experiment_configs WHERE config_id = ?", (config_id,))
-        config_data = cursor.fetchone()
-        
+        config_data = db.get_configs(config_id=config_id)
+        config_data = config_data.iloc[0].to_dict() if not config_data.empty else None
         if config_data is None:
             raise ValueError(f"Configuration with ID {config_id} not found")
+          # Create config object
+        # Safely extract values from pandas Series with fallbacks
+        if config_data['recognition_technique'] is None:
+            config_recognition = recognition_technique
+        else:
+            config_recognition = config_data['recognition_technique']
+        if config_data['n_pips'] is None:
+            config_n_pips = n_pips
+        else:
+            config_n_pips = int(config_data['n_pips'])
+        if config_data['lookback'] is None:
+            config_lookback = lookback
+        else:
+            config_lookback = int(config_data['lookback'])
+        if config_data['hold_period'] is None:
+            config_hold_period = hold_period
+        else:
+            config_hold_period = int(config_data['hold_period'])
+        if config_data['timeframe_id'] is None:
+            config_timeframe_id = timeframe_id
+        else:
+            config_timeframe_id = int(config_data['timeframe_id'])
         
-        # Create config object
         config = BacktestConfig(
             stock_id=stock_id,
-            timeframe_id=timeframe_id,
+            timeframe_id=config_timeframe_id,
             train_start=train_start,
             train_end=train_end,
             test_start=test_start,
             test_end=test_end,
-            recognition_technique=config_data['recognition_technique'] or recognition_technique,
-            n_pips=config_data['n_pips'] or n_pips,
-            lookback=config_data['lookback'] or lookback,
-            hold_period=config_data['hold_period'] or hold_period,
+            recognition_technique=config_recognition,
+            n_pips=config_n_pips,
+            lookback=config_lookback,
+            hold_period=config_hold_period,
             config_id=config_id
         )
         
-        # Add additional parameters
+          # Add additional parameters
         for attr in ['returns_hold_period', 'distance_measure', 'mse_threshold',
                    'fixed_tp_pct', 'fixed_sl_pct', 'trailing_sl_pct', 
                    'time_exit_periods', 'reward_risk_min']:
-            if attr in config_data and config_data[attr] is not None:
+            if attr in config_data and not config_data[attr] == None:
                 setattr(config, attr, config_data[attr])
-        
-        # Parse model params if available
-        if 'model_params' in config_data and config_data['model_params']:
+                # set the distance measure to the config value
+                if attr == 'distance_measure':
+                    config.distance_measure = config_data[attr]
+          # Parse model params if available
+        if 'model_params' in config_data and not config_data['model_params'] == None:
             try:
                 config.model_params = eval(config_data['model_params'])
-            except:
-                pass
+            except Exception as e:
+                print(f"Warning: Could not parse model_params: {e}")
     else:
         # Create a new configuration
         config = BacktestConfig(
@@ -531,7 +653,7 @@ def run_backtest(
     results = backtester.run_backtest()
     
     # Plot results
-    backtester.plot_results()
+    #backtester.plot_results()
     
     # Generate and save report if requested
     if save_report:
@@ -557,19 +679,16 @@ if __name__ == "__main__":
     results = run_backtest(
         db=db,
         stock_id=1,  # Gold
-        timeframe_id=2,  # 1-hour timeframe
-        train_start=pd.Timestamp("2019-01-01"),
-        train_end=pd.Timestamp("2022-12-31"),
-        test_start=pd.Timestamp("2023-01-01"),
-        test_end=pd.Timestamp("2023-12-31"),
-        recognition_technique="svm",
-        n_pips=5,
-        lookback=24,
-        hold_period=6,
-        mse_threshold=0.03,
+        train_start=pd.Timestamp("2024-01-01"),
+        train_end=pd.Timestamp("2025-01-01"),
+        test_start=pd.Timestamp("2024-01-01"),
+        test_end=pd.Timestamp("2025-05-01"),
+        recognition_technique="random_forest",
+        mse_threshold=0.01,
         reward_risk_min=1.2,
         exit_strategy=ExitStrategy.PATTERN_BASED,
-        save_report=True
+        save_report=True,
+        config_id=97,
     )
     
     # Print metrics summary

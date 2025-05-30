@@ -253,8 +253,8 @@ def store_performance_metrics(db: Database, metrics: PerformanceMetrics) -> int:
     cursor = db.connection.cursor()
     cursor.execute(
         """SELECT metric_id FROM performance_metrics 
-           WHERE stock_id = ? AND timeframe_id = ? AND config_id = ? AND start_date = ? AND end_date = ?""",
-        (metrics.stock_id, metrics.timeframe_id, metrics.config_id, metrics.start_date, metrics.end_date)
+           WHERE stock_id = ? AND timeframe_id = ? AND config_id = ? AND start_date = ? AND end_date = ? AND recognition_technique = ?""",
+        (metrics.stock_id, metrics.timeframe_id, metrics.config_id, metrics.start_date, metrics.end_date , metrics.recognition_technique)
     )
     existing_id = cursor.fetchone()
     
@@ -371,31 +371,30 @@ def create_performance_report(
     import io
     import base64
     from matplotlib.figure import Figure
-    
-    # Create a report template
+      # Create a report template
     report_template = """
     <!DOCTYPE html>
     <html>
     <head>
         <title>Backtest Performance Report</title>
         <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            h1, h2 { color: #333366; }
-            .container { display: flex; flex-wrap: wrap; }
-            .card { 
+            body {{ font-family: Arial, sans-serif; margin: 20px; }}
+            h1, h2 {{ color: #333366; }}
+            .container {{ display: flex; flex-wrap: wrap; }}
+            .card {{ 
                 background-color: #f9f9f9; 
                 border-radius: 5px; 
                 padding: 15px; 
                 margin: 10px; 
                 flex: 1 1 300px;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .metric { font-weight: bold; }
-            .chart { margin: 20px 0; max-width: 100%; }
-            table { border-collapse: collapse; width: 100%; margin: 20px 0; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f2f2f2; }
-            tr:nth-child(even) { background-color: #f9f9f9; }
+            }}
+            .metric {{ font-weight: bold; }}
+            .chart {{ margin: 20px 0; max-width: 100%; }}
+            table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+            th {{ background-color: #f2f2f2; }}
+            tr:nth-child(even) {{ background-color: #f9f9f9; }}
         </style>
     </head>
     <body>
@@ -542,11 +541,11 @@ def create_performance_report(
         ax.text(0.5, 0.5, "Monthly data not available", ha='center', va='center')
         ax.set_axis_off()
         monthly_returns_img = fig_to_base64(fig_monthly)
-    
-    # Generate trade rows
+      # Generate trade rows
     trade_rows = ""
-    for idx, trade in trades_df.iloc[-20:].iterrows():  # Show last 20 trades
-        trade_rows += f"""
+    if not trades_df.empty and 'entry_time' in trades_df.columns:
+        for idx, trade in trades_df.iloc[-50:].iterrows():  # Show last 20 trades
+            trade_rows += f"""
         <tr>
             <td>{pd.to_datetime(trade['entry_time']).strftime('%Y-%m-%d')}</td>
             <td>{trade['type']}</td>
@@ -556,6 +555,12 @@ def create_performance_report(
             <td>{trade['outcome']}</td>
             <td>{trade['reason']}</td>
             <td>{trade['duration']}</td>
+        </tr>
+        """
+    else:
+        trade_rows = """
+        <tr>
+            <td colspan="8" style="text-align: center;">No trades executed during the backtest period</td>
         </tr>
         """
     

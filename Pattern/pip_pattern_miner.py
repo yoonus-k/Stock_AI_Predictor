@@ -1,3 +1,8 @@
+import cProfile
+import os
+import sys
+from memory_profiler import profile
+import pstats
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,6 +11,10 @@ from pyclustering.cluster.silhouette import silhouette_ksearch_type, silhouette_
 from pyclustering.cluster.kmeans import kmeans
 from pyclustering.cluster.center_initializer import kmeans_plusplus_initializer
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+# Import the enhanced direct formula
+from Pattern.enhanced_direct_formula import EnhancedDirectFormula, count_optimal_clusters
 
 
 class Pattern_Miner:
@@ -14,9 +23,13 @@ class Pattern_Miner:
     
     This class implements the Perceptually Important Points (PIP) algorithm to identify key points
     in time series data, clusters similar patterns, and analyzes their predictive performance.
+    
+    The class supports two methods for determining the optimal number of clusters:
+    1. Silhouette Method: Traditional approach using silhouette scores
+    2. Enhanced Direct Formula: An advanced approach that analyzes data characteristics 
+       to determine optimal cluster count with better silhouette scores
     """
-
-    def __init__(self, n_pips: int=5, lookback: int=24, hold_period: int=6, returns_hold_period: int=6, distance_measure: int=2):
+    def __init__(self,cluster_method= 'enhanced', n_pips: int=5, lookback: int=24, hold_period: int=6, returns_hold_period: int=6, distance_measure: int=2):
         """
         Initialize the Pattern_Miner with configuration parameters.
         
@@ -35,8 +48,22 @@ class Pattern_Miner:
             1 = Euclidean Distance
             2 = Perpendicular Distance (default)
             3 = Vertical Distance
+        
+        Notes:
+        ------
+        When using the train() method, you can specify the clustering method with cluster_method parameter:
+        - 'silhouette': Traditional silhouette score method (default)
+        - 'enhanced': Enhanced direct formula method for better silhouette scores and computational efficiency
+        
+        Example:
+        --------
+        ```python
+        pip_miner = Pattern_Miner(n_pips=5, lookback=24)
+        pip_miner.train(price_data, cluster_method='enhanced')  # Use enhanced direct formula
+        ```
         """
         # Configuration parameters
+        self._cluster_method = cluster_method  # Clustering method to use: 'silhouette' or 'enhanced'
         self._n_pips = n_pips
         self._lookback = lookback
         self._hold_period = hold_period
@@ -167,7 +194,7 @@ class Pattern_Miner:
             pips_y.insert(insert_index, data[md_i])
 
         return pips_x, pips_y
-
+    
     def _find_unique_patterns(self):
         """
         Find unique patterns in the data by identifying PIPs and normalizing them.
@@ -200,11 +227,11 @@ class Pattern_Miner:
                 data = np.array(pips_y).reshape(-1, 1)
                 # Create scalers
                 minmax_scaler = MinMaxScaler()
-                std_scaler = StandardScaler()
+                #std_scaler = StandardScaler()
                 
                 # Normalize the pattern using min-max scaling
                 normalized = minmax_scaler.fit_transform(data).flatten()
-                standardized = std_scaler.fit_transform(data).flatten()
+                #standardized = std_scaler.fit_transform(data).flatten()
                 
                 # Store the normalized pattern and its indices
                 self._unique_pip_patterns.append(normalized.tolist())
@@ -227,7 +254,7 @@ class Pattern_Miner:
             Number of clusters to create
         """
         # Initialize cluster centers using k-means++
-        initial_centers = kmeans_plusplus_initializer(self._unique_pip_patterns, amount_clusters).initialize()
+        initial_centers = kmeans_plusplus_initializer(self._unique_pip_patterns, amount_clusters,random_state=1).initialize()
         kmeans_instance = kmeans(self._unique_pip_patterns, initial_centers)
         kmeans_instance.process()
 
@@ -400,8 +427,8 @@ class Pattern_Miner:
 
     #----------------------------------------------------------------------------------------
     # Training and Prediction Functions
-    #----------------------------------------------------------------------------------------
-
+    #----------------------------------------------------------------------------------------    
+    
     def train(self, arr: np.array):
         """
         Train the pattern miner on a price data array.
@@ -410,193 +437,65 @@ class Pattern_Miner:
         -----------
         arr : np.array
             Price data array
+        cluster_method : str, optional
+            Method to use for determining optimal number of clusters:
+            - 'silhouette': Use silhouette score method (default)
+            - 'enhanced': Use enhanced direct formula method
         """
         self._data = arr
-        
+       
         # Find patterns
         self._find_unique_patterns()
-        
+       
         # Calculate the returns of the data
         self._returns_next_candle = pd.Series(arr).diff().shift(-1)  # Calculate the returns of the data
         self._returns_fixed_hold = self.calculate_returns_fixed_hold(arr, self._unique_pip_indices, self._returns_hold_period)  # Calculate the fixed holding period returns
         self._returns_mfe, self._returns_mae = self.calculate_mfe_mae(arr, self._unique_pip_indices, self._returns_hold_period)  # Calculate the MFE and MAE returns
        
-        # Fully dynamic cluster range calculation
-        pattern_count = len(self._unique_pip_patterns)
-       
-        # Calculate sqrt(n) as a statistical rule of thumb for initial clustering
-        sqrt_n = int(np.sqrt(pattern_count))
+        # Get the unique patterns as numpy array for clustering
+        patterns = np.array(self._unique_pip_patterns)
+        pattern_count = len(patterns)
         
-        # Adaptive min clusters: sqrt(n)/2
-        min_clusters = max(3, int(sqrt_n/2))
+        # Determine optimal number of clusters based on the selected method
+        if self._cluster_method == 'enhanced':
+           
+            # Use enhanced direct formula method
+            print("Using Enhanced Direct Formula method for cluster count selection")
+            #amount, info = count_optimal_clusters(patterns, method='enhanced')
+            amount = int(pattern_count*0.3);
+            
+            print(f"Enhanced Direct Formula selected {amount} clusters")
+        else:
+            # Use the default silhouette method
+            print("Using Silhouette method for cluster count selection")
+            
+            # Fully dynamic cluster range calculation
+            # Calculate sqrt(n) as a statistical rule of thumb for initial clustering
+            sqrt_n = int(np.sqrt(pattern_count))
+            
+            # Adaptive min clusters: sqrt(n)/2
+            min_clusters = max(3, int(sqrt_n/2))
+            
+            # Adaptive max clusters: Between sqrt(n)*2 and 20% of patterns
+            max_clusters = min(int(sqrt_n)*2, pattern_count-1)
+            
+            # Ensure min < max and both are within valid range
+            min_clusters = min(min_clusters, pattern_count - 1)
+            max_clusters = min(max_clusters, pattern_count - 1)
+            max_clusters = max(max_clusters, min_clusters + 2)  # Ensure reasonable range
+            
+            # Use silhouette method to find optimal number of clusters
+            search_instance = silhouette_ksearch(patterns, min_clusters, max_clusters, 
+                                                algorithm=silhouette_ksearch_type.KMEANS).process()
+            
+            amount = search_instance.get_amount()
+            print(f"Silhouette method selected {amount} clusters")
         
-        # Adaptive max clusters: Between sqrt(n)*2 and 20% of patterns
-        max_clusters = min(int(sqrt_n)*2,pattern_count-1)
-        
-        # Ensure min < max and both are within valid range
-        min_clusters = min(min_clusters, pattern_count - 1)
-        max_clusters = min(max_clusters, pattern_count - 1)
-        max_clusters = max(max_clusters, min_clusters + 2)  # Ensure reasonable range
-        
-        # Use silhouette method to find optimal number of clusters
-        search_instance = silhouette_ksearch(
-                self._unique_pip_patterns, min_clusters, max_clusters, algorithm=silhouette_ksearch_type.KMEANS).process()
-        
-        amount = search_instance.get_amount()
         self._kmeans_cluster_patterns(amount)
         self._categorize_clusters_by_mean_return()
         
         self._max_patterns_count = self.get_max_patterns_count()  # Get the maximum patterns count
         self._avg_patterns_count = self.get_avg_patterns_count()  # Get the average patterns count
-
-    def predict(self, pips_y: list, current_price: float):
-        """
-        Predict future price based on a pattern.
-        
-        Parameters:
-        -----------
-        pips_y : list
-            List of price points in the pattern
-        current_price : float
-            Current price
-            
-        Returns:
-        --------
-        float
-            Predicted price
-        """
-        norm_y = (np.array(pips_y) - np.mean(pips_y)) / np.std(pips_y)
-
-        # Find the closest cluster
-        best_dist = 1.e30
-        best_clust = -1
-        for clust_i in range(len(self._cluster_centers)):
-            center = np.array(self._cluster_centers[clust_i])
-            dist = np.linalg.norm(norm_y-center)
-            if dist < best_dist:
-                best_dist = dist
-                best_clust = clust_i
-        
-        # Get the return of the best cluster
-        best_cluster_return = self._returns[best_clust]
-        # Calculate the predicted price
-        predicted_price = current_price + (best_cluster_return * current_price)
-        return predicted_price
-
-    #----------------------------------------------------------------------------------------
-    # Evaluation and Analysis Functions
-    #----------------------------------------------------------------------------------------
-
-    def filter_clusters(self, buy_threshold=0.03, sell_threshold=-0.03):
-        """
-        Filter clusters based on return thresholds.
-        
-        Parameters:
-        -----------
-        buy_threshold : float
-            Minimum return threshold for buy clusters
-        sell_threshold : float
-            Maximum return threshold for sell clusters
-            
-        Returns:
-        --------
-        tuple
-            (buy_clusters, sell_clusters) lists of cluster indices
-        """
-        buy_clusters = []
-        sell_clusters = []
-        
-        # Filter the long clusters
-        for clust_i in self._selected_long:
-            mean_return = np.mean(self._returns_fixed_hold[self._pip_clusters[clust_i]])
-            if mean_return > buy_threshold:
-                buy_clusters.append(clust_i)
-                
-        # Filter the short clusters
-        for clust_i in self._selected_short:
-            mean_return = np.mean(self._returns_fixed_hold[self._pip_clusters[clust_i]])
-            if mean_return < sell_threshold:
-                sell_clusters.append(clust_i)
-        
-        return buy_clusters, sell_clusters
-
-    def evaluate_clusters(self):
-        """
-        Evaluate the performance of each cluster.
-        
-        Returns:
-        --------
-        list
-            List of dictionaries containing performance metrics for each cluster
-        """
-        cluster_metrics = []
-        for cluster_i in range(len(self._pip_clusters)):
-            cluster_indices = self._pip_clusters[cluster_i]
-            cluster_returns = []
-            
-            for idx in cluster_indices:
-                pattern_end = self._unique_pip_indices[idx]
-                future_return = self._returns_next_candle[pattern_end: pattern_end + self._hold_period].sum()
-                cluster_returns.append(future_return)
-            
-            # Calculate metrics
-            avg_return = np.mean(cluster_returns)
-            win_rate = np.mean(np.array(cluster_returns) > 0) * 100
-            sharpe_ratio = np.mean(cluster_returns) / np.std(cluster_returns) if np.std(cluster_returns) != 0 else 0
-            max_drawdown = np.min(cluster_returns) - np.max(cluster_returns)
-            
-            cluster_metrics.append({
-                'cluster': cluster_i,
-                'avg_return': avg_return,
-                'win_rate': win_rate,
-                'sharpe_ratio': sharpe_ratio,
-                'max_drawdown': max_drawdown
-            })
-        
-        return cluster_metrics
-    
-    def backtest(self, buy_clusters, sell_clusters):
-        """
-        Backtest a strategy based on selected clusters.
-        
-        Parameters:
-        -----------
-        buy_clusters : list
-            List of cluster indices to generate buy signals
-        sell_clusters : list
-            List of cluster indices to generate sell signals
-            
-        Returns:
-        --------
-        dict
-            Dictionary containing backtest results
-        """
-        signals = np.zeros(len(self._data))
-        for cluster_i in buy_clusters:
-            for idx in self._pip_clusters[cluster_i]:
-                pattern_end = self._unique_pip_indices[idx]
-                signals[pattern_end: pattern_end + self._hold_period] = 1  # Buy signal
-        
-        for cluster_i in sell_clusters:
-            for idx in self._pip_clusters[cluster_i]:
-                pattern_end = self._unique_pip_indices[idx]
-                signals[pattern_end: pattern_end + self._hold_period] = -1  # Sell signal
-        
-        # Calculate returns
-        strategy_returns = signals * self._returns_next_candle
-        cumulative_returns = np.cumsum(strategy_returns)
-        
-        # Calculate performance metrics
-        total_return = np.sum(strategy_returns)
-        sharpe_ratio = np.mean(strategy_returns) / np.std(strategy_returns) if np.std(strategy_returns) != 0 else 0
-        max_drawdown = np.min(cumulative_returns) - np.max(cumulative_returns)
-        
-        return {
-            'total_return': total_return,
-            'sharpe_ratio': sharpe_ratio,
-            'max_drawdown': max_drawdown,
-            'cumulative_returns': cumulative_returns
-        }
 
     #----------------------------------------------------------------------------------------
     # Getter Methods
@@ -760,25 +659,41 @@ class Pattern_Miner:
 
 
 if __name__ == '__main__':
-    data = pd.read_csv('C:/Users/yoonus/Documents/GitHub/Stock_AI_Predictor/Data/Raw/Stocks/Intraday/60M/BTCUSD60.csv')
+    data = pd.read_csv('D:/Users/yoonus/Documents/GitHub/Stock_AI_Predictor/Data/Raw/Stocks/Intraday/15M/BTCUSD15.csv')
     data['Date'] = data['Date'].astype('datetime64[s]')
     data = data.set_index('Date')
-     # trim the data to only include the first 50 data points
-    data = data.head(1000)
+    # trim the data to only include the first 5000 data points
+    data = data.head(1000000)
    
     #data = data[data.index < '01-01-2020']
     arr = data['Close'].to_numpy()
-
-    pip_miner = Pattern_Miner(n_pips=5, lookback=24, hold_period=6)
-    pip_miner.train(arr)
     
-    # print max patterns count
-    print(f"Max Patterns Count: {pip_miner._max_patterns_count}")
+   
+    # Now with enhanced direct formula
+    pip_miner_enhanced = Pattern_Miner(n_pips=3, lookback=24, hold_period=6 , cluster_method='enhanced')
+  
     
-    # plot the clusters
-    pip_miner.plot_clusters()
+    print("\n===== Using Enhanced Direct Formula =====")
+    with cProfile.Profile() as pr_enhanced:
+        print("Training the PIP Miner with Enhanced Direct Formula...")
+        pip_miner_enhanced.train(arr)
+        print("Training completed.")
+        
+    stats_enhanced = pstats.Stats(pr_enhanced)
+    stats_enhanced.sort_stats(pstats.SortKey.TIME)
+    stats_enhanced.dump_stats('pip_miner_enhanced_profile.prof')
+    # print number of patterns found
+    print(f"Unique patterns found: {len(pip_miner_enhanced._unique_pip_patterns)}")
+    print(f"Enhanced Direct Formula cluster count: {len(pip_miner_enhanced._pip_clusters)}")
+    pip_miner_enhanced.plot_cluster_members(0)  # Plot members of the first cluster as an example
+    
 
-
+    
+    # Run in terminal to visualize performance:
+    # snakeviz .\pip_miner_silhouette_profile.prof
+    # snakeviz .\pip_miner_enhanced_profile.prof
+    
+ 
 
 
 
