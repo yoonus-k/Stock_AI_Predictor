@@ -1,0 +1,11 @@
+group,features,reward,std,importance
+Group 1,"['probability', 'action', 'reward_risk_ratio']",295.22837225021794,0.0,126.93590237835451
+Group 3,"['expected_value', 'rsi', 'atr']",309.0604267212984,0.0,113.10384790727403
+Group 4,"['atr_ratio', 'unified_sentiment', 'sentiment_count']",345.5978522672667,0.0,76.56642236130574
+Group 2,"['max_gain', 'max_drawdown', 'mse']",379.5738696650733,0.0,42.59040496349917
+Group 6,"['change_nonrept_short', 'change_noncommercial_long', 'change_noncommercial_short']",400.9233366936023,0.0,21.240937934970134
+Group 10,"['position', 'portfolio_max_drawdown', 'win_rate']",408.51006587755546,0.0,13.654208751016995
+Group 8,"['day_cos', 'asian_session', 'london_session']",412.34393274327886,0.0,9.820341885293601
+Group 7,"['hour_sin', 'hour_cos', 'day_sin']",417.672455828455,0.0,4.491818800117471
+Group 9,"['ny_session', 'balance_ratio', 'position_ratio']",429.66342309268657,0.0,-7.499148464114114
+Group 5,"['net_noncommercial', 'net_nonreportable', 'change_nonrept_long']",452.71086585537705,0.0,-30.546591226804594

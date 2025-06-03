@@ -25,7 +25,7 @@ sys.path.append(str(project_root))
 # Import custom modules
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
-from RL.Envs.trading_env import PatternSentimentEnv
+from RL.Envs.trading_env import TradingEnv
 from huggingface_hub import HfApi, hf_hub_download, upload_file
 
 class TradingRLModel:
@@ -84,7 +84,7 @@ class TradingRLModel:
         try:
             # Define a temp environment for loading
             # (Note: we'll need to make sure this matches what's needed for inference)
-            dummy_env = DummyVecEnv([lambda: PatternSentimentEnv([])])
+            dummy_env = DummyVecEnv([lambda: TradingEnv([])])
             
             # Download the model file
             model_path = hf_hub_download(repo_id=model_id, filename="rl_model.zip", revision=revision)
@@ -107,11 +107,11 @@ class TradingRLModel:
             total_timesteps: Total timesteps for training
         """
         # Create training environment
-        env = PatternSentimentEnv(training_data)
+        env = TradingEnv(training_data)
         
         # Create evaluation environment if data is provided
         if eval_data:
-            eval_env = PatternSentimentEnv(eval_data)
+            eval_env = TradingEnv(eval_data)
         else:
             eval_env = None
         

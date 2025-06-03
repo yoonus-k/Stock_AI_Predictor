@@ -1,0 +1,2 @@
+initial_balance,final_balance,total_return,total_trades,win_rate,avg_profit,avg_loss,profit_factor,sharpe_ratio,long_trades,short_trades,long_win_rate,short_win_rate,max_drawdown
+10000.0,10000.0,0.0,31,0.0,0,0.0,inf,0,31,0,0.0,0,92.83022163050306

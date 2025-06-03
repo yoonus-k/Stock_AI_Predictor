@@ -23,7 +23,7 @@ sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
-from Experements.Backtesting.db_extensions import Database
+from Data.Database.db import Database
 from Pattern.pip_pattern_miner import Pattern_Miner
 
 # Configure logging
@@ -262,9 +262,8 @@ class ConfigBasedRecognizer:
             tuple: (x indices, normalized y values) or (None, None) if extraction fails
         """
         try:
-            # Handle pandas Series input
-            if isinstance(window, pd.Series):
-                window = window.values
+            
+            #window = window.values
 
             pattern_miner = Pattern_Miner()
             x, y = pattern_miner.find_pips(window, n_pips, dist_type)
@@ -340,23 +339,10 @@ class ConfigBasedRecognizer:
 
         # Get feature strings from the DataFrame
         feature_strings = clusters_df["avg_price_points_json"].values
+        feature_length = len(
+            self.parse_feature_array(feature_strings[0])
+        )  # Assuming all features have the same length
 
-        # First, determine the most common feature length
-        length_counts = {}
-        for feature_str in feature_strings:
-            try:
-                features = self.parse_feature_array(feature_str)
-                length = len(features)
-                length_counts[length] = length_counts.get(length, 0) + 1
-            except Exception:
-                continue
-
-        if not length_counts:
-            raise ValueError("Could not parse any valid features")
-
-        # Use the most common length as our feature_length
-        feature_length = max(length_counts.items(), key=lambda x: x[1])[0]
-        # logger.info(f"Determined feature length: {feature_length}")
 
         # Process features with consistent length
         processed_features = []
@@ -367,37 +353,10 @@ class ConfigBasedRecognizer:
                 # Parse the feature array
                 features = self.parse_feature_array(feature_str)
 
-                # Handle features as pandas Series if needed
-                if isinstance(features, pd.Series):
-                    if len(features) > 0:
-                        features = features.values  # Convert to numpy array
-                    else:
-                        continue
-
-                # Get feature length safely
-                feat_len = len(features)
-
-                # Adjust length if necessary
-                if feat_len < feature_length:
-                    # Pad with zeros
-                    padded = np.zeros(feature_length)
-                    padded[:feat_len] = features
-                    features = padded
-                elif feat_len > feature_length:
-                    # Truncate
-                    features = features[:feature_length]
-
                 processed_features.append(features)
-                # Safely get the cluster_id - handle if it's a pandas Series
-                if (
-                    hasattr(clusters_df.iloc[i], "__class__")
-                    and clusters_df.iloc[i].__class__.__name__ == "Series"
-                ):
-                    actual_index = clusters_df.iloc[i]["cluster_id"]
-                    if hasattr(actual_index, "iloc") and len(actual_index) > 0:
-                        actual_index = actual_index.iloc[0]  # Extract scalar value
-                else:
-                    actual_index = clusters_df.iloc[i]["cluster_id"]
+               
+                actual_index = clusters_df.iloc[i]["cluster_id"]
+                   
 
                 valid_indices.append(actual_index)
             except Exception as e:
@@ -482,7 +441,7 @@ class ConfigBasedRecognizer:
         return cluster
 
     # function to get the recognizer for a specific stock and timeframe
-    def get_recognizer(self, stock_id, timeframe_id, config_id=1):
+    def get_recognizer(self, stock_id, timeframe_id, config_id=1,clusters = None):
         """
         Get the recognizer for a specific stock and timeframe.
 
@@ -500,9 +459,17 @@ class ConfigBasedRecognizer:
             # Return cached recognizer
             recognizer = self.recognizers[key]
             feature_length = self.feature_lengths[key]
-            clusters_df = self.db.get_clusters_by_config(
-                stock_id, timeframe_id, config_id
-            )
+            # filter the clusters by stock_id, timeframe_id and config_id
+            if clusters is None:
+                clusters_df = self.db.get_clusters_by_config(stock_id, timeframe_id, config_id)
+            else:
+                # filter the dataframe by stock_id, timeframe_id and config_id
+                clusters_df = clusters[
+                    (clusters["stock_id"] == stock_id)
+                    & (clusters["timeframe_id"] == timeframe_id)
+                    & (clusters["config_id"] == config_id)
+                ]
+            
             return recognizer, feature_length, clusters_df
         else:
             logger.warning(f"No recognizer found for {key}. Please create it first.")
@@ -588,7 +555,7 @@ class ConfigBasedRecognizer:
 
         # function to predict the best cluster for a given price window accross all configs
 
-    def predict_best_cluster(self, stock_id: int, timeframe_id: int, window: np.array):
+    def predict_best_cluster(self, stock_id: int, timeframe_id: int, window: np.array ,configs: pd.DataFrame = None, clusters: pd.DataFrame = None):
         """
         Predict the best matching cluster for a given price window across all configs.
 
@@ -596,9 +563,7 @@ class ConfigBasedRecognizer:
             stock_id: Stock ID
             timeframe_id: Timeframe ID
             window: Price window to match
-            n_pips: Number of PIPs to extract
-            dist_type: Distance type for PIP extraction
-
+            configs: DataFrame of configurations or None to use all configs
         Returns:
             Dictionary with best matching pattern information or None if no match found
         """
@@ -606,12 +571,12 @@ class ConfigBasedRecognizer:
         best_expected_value = 0.0
 
         # get the configs for the stock and timeframe
-        configs = self.db.get_configs_by_stock_and_timeframe(stock_id, timeframe_id)
-        if configs.empty:
-            logger.warning(
-                f"No configurations found for Stock ID {stock_id}, Timeframe ID {timeframe_id}"
-            )
-            return None
+        if configs is None:
+            configs = self.db.get_configs_by_stock_and_timeframe(stock_id, timeframe_id)
+            if configs.empty:
+                raise ValueError(
+                    f"No configurations found for Stock ID {stock_id}, Timeframe ID {timeframe_id}"
+                )
         # Loop through each config and get the recognizer
         for _, config in configs.iterrows():
             config_id = config["config_id"]
@@ -620,7 +585,7 @@ class ConfigBasedRecognizer:
             match_window = window[-lookback:]
 
             recognizer, feature_length, clusters_df = self.get_recognizer(
-                stock_id, timeframe_id, config_id
+                stock_id, timeframe_id, config_id , clusters
             )
 
             if recognizer:
@@ -638,7 +603,7 @@ class ConfigBasedRecognizer:
                     best_expected_value = matched_cluster["expected_value"]
                     best_match = matched_cluster
 
-        return best_match
+        return best_match , best_expected_value
 
 
 if __name__ == "__main__":
@@ -661,8 +626,40 @@ if __name__ == "__main__":
 
     # get only close prices
     price_window = price_data["close_price"].values[
-        -100:
+        300:348
     ]  # Last 24 hours as an example
 
-    best_cluster = recognizer.predict_best_cluster(stock_id, timeframe_id, price_window)
+    best_cluster,best_expected_value = recognizer.predict_best_cluster(stock_id, timeframe_id, price_window)
     print(best_cluster)
+    
+    # normalize the price window
+    scaler = MinMaxScaler()
+    price_window = scaler.fit_transform(price_window.reshape(-1, 1)).flatten()
+    
+    # plot the best cluster features and the price window in seperate subplots
+    if best_cluster is not None:
+        cluster_features = recognizer.parse_feature_array(
+            best_cluster["avg_price_points_json"]
+        )
+
+        plt.figure(figsize=(12, 6))
+        plt.subplot(1, 2, 1)
+        plt.plot(price_window, label="Price Window", color="blue")
+        plt.title("Price Window")
+        plt.xlabel("Time")
+        plt.ylabel("Normalized Price")
+        plt.legend()
+
+        plt.subplot(1, 2, 2)
+        plt.plot(cluster_features, label="Matched Cluster Features with expected value of : " + str(best_expected_value), color="orange")
+        plt.title("Matched Cluster Features")
+        plt.xlabel("Time")
+        plt.ylabel("Normalized Price")
+        plt.legend()
+
+        plt.tight_layout()
+        plt.show()
+    else:
+        print("No matching cluster found.")
+    
+    

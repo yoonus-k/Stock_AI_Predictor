@@ -101,7 +101,7 @@ class Database(BaseDatabase):
         if not config_ids:
             logger.warning(f"No configurations found for stock_id={stock_id}")
         else:
-            l#ogger.info(f"Found {len(config_ids)} configurations for stock_id={stock_id}")
+            logger.info(f"Found {len(config_ids)} configurations for stock_id={stock_id}")
             
         return config_ids
     def get_configs_by_stock_and_timeframe(self, stock_id, timeframe_id):

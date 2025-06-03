@@ -16,24 +16,15 @@ def get_cot_data(ticker):
         filtered_df = df[df["Market and Exchange Names"] == cot_name]
         # filtering the required columns
         filtered_df = filtered_df[["Market and Exchange Names", "As of Date in Form YYYY-MM-DD", 
-                                    "Noncommercial Positions-Long (All)", "Noncommercial Positions-Short (All)", 
                                     "Change in Noncommercial-Long (All)", "Change in Noncommercial-Short (All)",
-                                    "% of OI-Noncommercial-Long (All)", "% of OI-Noncommercial-Short (All)",
-                                    "Nonreportable Positions-Long (All)", "Nonreportable Positions-Short (All)",
                                     "Change in Nonreportable-Long (All)", "Change in Nonreportable-Short (All)",]]
         # renaming the columns for simple terms like long, short, change in long, change in short
         # for example: "Noncommercial Positions-Long (All)" to "Noncommercial Long"
         filtered_df = filtered_df.rename(columns={
             "Market and Exchange Names": "ticker",
             "As of Date in Form YYYY-MM-DD": "date",
-            "Noncommercial Positions-Long (All)": "noncommercial_long",
-            "Noncommercial Positions-Short (All)": "noncommercial_short",
             "Change in Noncommercial-Long (All)": "change_noncommercial_long",
             "Change in Noncommercial-Short (All)": "change_noncommercial_short",
-            "% of OI-Noncommercial-Long (All)": "per_noncommercial_long",
-            "% of OI-Noncommercial-Short (All)": "per_noncommercial_short",
-            "Nonreportable Positions-Long (All)": "nonrept_long",
-            "Nonreportable Positions-Short (All)": "nonrept_short",
             "Change in Nonreportable-Long (All)": "change_nonrept_long",
             "Change in Nonreportable-Short (All)": "change_nonrept_short"
         })
@@ -43,13 +34,18 @@ def get_cot_data(ticker):
         # sort by date
         filtered_df = filtered_df.sort_values(by="date", ascending=False)
         # drop the index
-        filtered_df = filtered_df.reset_index(drop=True)
-        # make the date column as datetime
+        filtered_df = filtered_df.reset_index(drop=True)        # make the date column as datetime
         filtered_df["date"] = pd.to_datetime(filtered_df["date"])
         
+        # convert the change columns to numeric values
+        filtered_df["change_noncommercial_long"] = pd.to_numeric(filtered_df["change_noncommercial_long"], errors='coerce')
+        filtered_df["change_noncommercial_short"] = pd.to_numeric(filtered_df["change_noncommercial_short"], errors='coerce')
+        filtered_df["change_nonrept_long"] = pd.to_numeric(filtered_df["change_nonrept_long"], errors='coerce')
+        filtered_df["change_nonrept_short"] = pd.to_numeric(filtered_df["change_nonrept_short"], errors='coerce')
+        
         # add the net positions for noncommercial and nonreportable
-        filtered_df["net_noncommercial"] = filtered_df["noncommercial_long"] - filtered_df["noncommercial_short"]
-        filtered_df["net_nonreportable"] = filtered_df["nonrept_long"] - filtered_df["nonrept_short"]
+        filtered_df["change_noncommercial_delta"] = filtered_df["change_noncommercial_long"] - filtered_df["change_noncommercial_short"]
+        filtered_df["change_nonreportable_delta"] = filtered_df["change_nonrept_long"] - filtered_df["change_nonrept_short"]
 
         # set the date as index
         filtered_df.set_index("date", inplace=True)

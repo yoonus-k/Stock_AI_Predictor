@@ -157,11 +157,10 @@ model.save("/path/to/model.zip")
 
 # On your local machine (after downloading)
 from stable_baselines3 import PPO
-from RL.Envs.trading_env import PatternSentimentEnv
-from RL.Envs.action_wrapper import TupleActionWrapper
+from RL.Envs.trading_env import TradingEnv
 
-# Create environment
-env = TupleActionWrapper(PatternSentimentEnv(...))
+# Create environment - no wrapper needed with MultiDiscrete action space
+env = TradingEnv(...)
 
 # Load model
 model = PPO.load("path/to/downloaded/model.zip", env=env)
@@ -173,7 +172,7 @@ action, _ = model.predict(obs)
 
 ## Troubleshooting
 
-- **Session disconnects**: Kaggle/Colab may disconnect after periods of inactivity. Use `KeepAlive` solutions or decrease number of timesteps.
+- **Session disconnects**: Kaggle/Collab may disconnect after periods of inactivity. Use `KeepAlive` solutions or decrease number of timesteps.
 - **Out of memory errors**: Reduce batch size or model complexity.
 - **Training too slow**: Ensure GPU is being utilized properly; check with monitoring tools.
 
