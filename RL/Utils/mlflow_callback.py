@@ -17,6 +17,9 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List, Union
 from stable_baselines3.common.callbacks import BaseCallback
 
+# Backtrader integration
+from Backtrader.portfolio_evaluator import BacktraderPortfolioEvaluator
+
 class MLflowLoggingCallback(BaseCallback):
     """
     Comprehensive MLflow callback that integrates:
@@ -54,8 +57,7 @@ class MLflowLoggingCallback(BaseCallback):
             feature_importance_freq: How often to calculate feature importance
             portfolio_eval_freq: How often to evaluate portfolio performance
             n_eval_episodes: Number of episodes for evaluation
-            max_eval_steps: Maximum steps per evaluation episode (prevents infinite loops)
-            risk_free_rate: Annual risk-free rate for Sharpe ratio calculation
+            max_eval_steps: Maximum steps per evaluation episode (prevents infinite loops)        risk_free_rate: Annual risk-free rate for Sharpe ratio calculation
             save_plots: Whether to save performance plots as artifacts
             save_model_checkpoints: Whether to save model checkpoints
             verbose: Verbosity level (0=silent, 1=normal, 2=detailed)
@@ -75,6 +77,16 @@ class MLflowLoggingCallback(BaseCallback):
         self.save_model_checkpoints = save_model_checkpoints
         self.timeframe = timeframe or "unknown"
         
+        # Initialize Backtrader portfolio evaluator
+        self.portfolio_evaluator = BacktraderPortfolioEvaluator(
+            initial_cash=100000,
+            commission=0.001,
+            slippage=0.0005,
+            enable_short=True,
+            enable_hedging=True,
+            verbose=(verbose > 1)
+        )
+        
         # Tracking variables
         self.last_time_evaluated = 0
         self.last_feature_importance = 0
@@ -90,23 +102,24 @@ class MLflowLoggingCallback(BaseCallback):
         # Create temporary directories for artifacts
         self.temp_dir = Path("temp_mlflow_artifacts")
         self.temp_dir.mkdir(exist_ok=True)
-        
-        # Feature names for importance analysis
+          # Feature names for importance analysis (30 features total)
         self.feature_names = [
-            # Base pattern features
+            # Base pattern features (7)
             "probability", "action", "reward_risk_ratio", "max_gain", "max_drawdown", "mse", "expected_value",
-            # Technical indicators
+            # Technical indicators (3)
             "rsi", "atr", "atr_ratio",
-            # Sentiment features
+            # Sentiment features (2)
             "unified_sentiment", "sentiment_count",
-            # COT data
+            # COT data (6)
             "net_noncommercial", "net_nonreportable", "change_nonrept_long", 
             "change_nonrept_short", "change_noncommercial_long", "change_noncommercial_short",
-            # Time features
+            # Time features (7)
             "hour_sin", "hour_cos", "day_sin", "day_cos", "asian_session", "london_session", "ny_session",
-            # Portfolio features
-            "balance_ratio", "position_ratio", "position", "portfolio_max_drawdown", "win_rate"
-        ]        
+            # Portfolio features (5 + 3 new metrics = 8)
+            "balance_ratio", "position_ratio", "position", "portfolio_max_drawdown", "win_rate",
+            # New performance metrics (3)
+            "avg_pnl_per_hour", "decisive_exits", "recovery_factor"
+        ]
     def _on_step(self) -> bool:
         """Called at each training step - orchestrates all monitoring activities"""
         
@@ -312,7 +325,6 @@ class MLflowLoggingCallback(BaseCallback):
                 # Save best model checkpoint if enabled
                 if self.save_model_checkpoints:
                     self._save_model_checkpoint("best_model")
-            
             if self.verbose > 0:
                 print(f"Evaluation - Mean reward: {results['mean_reward']:.2f} ± {results['std_reward']:.2f}")
                 
@@ -333,127 +345,102 @@ class MLflowLoggingCallback(BaseCallback):
         except Exception as e:
             if self.verbose > 0:
                 print(f"Warning: Could not run portfolio evaluation: {e}")
-    
     def _calculate_portfolio_metrics(self):
-        """Calculate comprehensive portfolio performance metrics"""
+        """Calculate comprehensive portfolio performance metrics using Backtrader"""
         try:
-            # Initialize tracking variables
-            portfolio_values = []
-            daily_returns = []
-            trade_results = []
-            action_counts = {0: 0, 1: 0, 2: 0}
+            if self.verbose > 1:
+                print("Using Backtrader for portfolio evaluation...")
             
-            # Portfolio tracking
-            initial_value = 10000.0
-            current_value = initial_value
-            peak_value = initial_value
-            max_drawdown = 0
+            # Use Backtrader's professional portfolio evaluation
+            metrics = self.portfolio_evaluator.evaluate_portfolio(
+                rl_model=self.model,
+                environment_data=None,  # Will use database data
+                episode_length=self.max_eval_steps,
+                timeframe=self.timeframe
+            )
             
-            # Trade tracking
-            in_trade = False
-            trade_entry_value = 0
-            profitable_trades = 0
-            losing_trades = 0
+            # Convert Backtrader metrics to expected format for MLflow logging
+            converted_metrics = self._convert_backtrader_metrics(metrics)
             
-            # Run evaluation episode
-            obs, _ = self.eval_env.reset()
-            portfolio_values.append(current_value)
+            if self.verbose > 1:
+                print(f"Backtrader evaluation completed. Total return: {converted_metrics.get('total_return', 0):.2%}")
             
-            for step in range(self.max_eval_steps):
-                previous_value = current_value
-                
-                # Get action from model
-                action, _ = self.model.predict(obs, deterministic=True)
-                action_type = int(action[0]) if hasattr(action, "__len__") else int(action)
-                action_counts[action_type] += 1
-                
-                # Track trades
-                if action_type == 1 and not in_trade:  # BUY
-                    in_trade = True
-                    trade_entry_value = current_value
-                elif action_type == 2 and in_trade:  # SELL
-                    in_trade = False
-                    trade_result = (current_value - trade_entry_value) / trade_entry_value
-                    trade_results.append(trade_result)
-                    if trade_result > 0:
-                        profitable_trades += 1
-                    else:
-                        losing_trades += 1
-                
-                # Execute action
-                obs, reward, done, truncated, info = self.eval_env.step(action)
-                
-                # Update portfolio value based on reward
-                if reward != 0:
-                    current_value *= (1 + np.clip(reward / 100, -0.1, 0.1))  # Limit to ±10%
-                
-                # Calculate daily return
-                daily_return = (current_value - previous_value) / previous_value
-                daily_returns.append(daily_return)
-                portfolio_values.append(current_value)
-                
-                # Update drawdown
-                if current_value > peak_value:
-                    peak_value = current_value
-                
-                current_drawdown = (peak_value - current_value) / peak_value
-                if current_drawdown > max_drawdown:
-                    max_drawdown = current_drawdown
-                
-                if done or truncated:
-                    break
-            
-            # Calculate performance metrics
-            total_return = (current_value / initial_value) - 1
-            total_trades = profitable_trades + losing_trades
-            win_rate = profitable_trades / max(1, total_trades)
-            
-            # Calculate Sharpe ratio
-            sharpe_ratio = 0
-            if daily_returns and np.std(daily_returns) > 0:
-                mean_return = np.mean(daily_returns)
-                std_return = np.std(daily_returns)
-                daily_risk_free = self.risk_free_rate / 252
-                sharpe_ratio = (mean_return - daily_risk_free) / std_return * np.sqrt(252)
-            
-            # Calculate profit factor
-            total_profit = sum(max(r, 0) for r in trade_results)
-            total_loss = abs(sum(min(r, 0) for r in trade_results))
-            profit_factor = total_profit / max(total_loss, 0.001)
-            
-            return {
-                "portfolio_value": current_value,
-                "total_return": total_return,
-                "max_drawdown": max_drawdown,
-                "sharpe_ratio": sharpe_ratio,
-                "win_rate": win_rate,
-                "total_trades": total_trades,
-                "profitable_trades": profitable_trades,
-                "losing_trades": losing_trades,
-                "profit_factor": profit_factor,
-                "action_counts": action_counts,
-                "portfolio_values": portfolio_values,
-                "daily_returns": daily_returns,
-                "trade_results": trade_results
-            }
+            return converted_metrics
             
         except Exception as e:
             if self.verbose > 0:
-                print(f"Error calculating portfolio metrics: {e}")
-            return None
+                print(f"Error in Backtrader portfolio evaluation: {e}")
+                print("Falling back to simple portfolio evaluation...")
+            
+            # Robust fallback implementation
+            return self._fallback_portfolio_evaluation()
     
+    def _convert_backtrader_metrics(self, bt_metrics: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert Backtrader metrics to expected MLflow format"""
+        try:
+            # Map Backtrader metrics to existing MLflow format
+            converted = {
+                # Core metrics
+                "portfolio_balance": bt_metrics.get('final_portfolio_value', 100000),
+                "total_return": bt_metrics.get('total_return', 0.0),
+                "max_drawdown": bt_metrics.get('max_drawdown_pct', 0.0),
+                "sharpe_ratio": bt_metrics.get('sharpe_ratio', 0.0),
+                "win_rate": bt_metrics.get('win_rate', 0.0),
+                
+                # Trade statistics
+                "total_trades": bt_metrics.get('total_trades', 0),
+                "profitable_trades": bt_metrics.get('winning_trades', 0),
+                "losing_trades": bt_metrics.get('losing_trades', 0),
+                "profit_factor": bt_metrics.get('profit_factor', 1.0),
+                "avg_winning_trade": bt_metrics.get('avg_winning_trade_pct', 0.0),
+                "avg_losing_trade": bt_metrics.get('avg_losing_trade_pct', 0.0),
+                
+                # Advanced metrics
+                "max_consecutive_wins": bt_metrics.get('max_consecutive_wins', 0),
+                "max_consecutive_losses": bt_metrics.get('max_consecutive_losses', 0),
+                
+                # Action distribution (use defaults if not available)
+                "action_counts": bt_metrics.get('action_distribution', {0: 1, 1: 0, 2: 0}),
+                
+                # Portfolio composition
+                "final_cash": bt_metrics.get('final_cash', 100000),
+                "final_position_value": bt_metrics.get('final_positions_value', 0),
+                
+                # Performance arrays (for plotting)
+                "portfolio_balances": bt_metrics.get('equity_curve', [100000]),
+                "daily_returns": bt_metrics.get('daily_returns', [0.0]),
+                "trade_results": bt_metrics.get('trade_returns', []),
+                "detailed_trades": bt_metrics.get('trade_list', [])
+            }
+            return converted
+            
+        except Exception as e:
+            if self.verbose > 0:
+                print(f"Error converting Backtrader metrics: {e}")
+            # raise an error to indicate failure
+            raise ValueError("Failed to convert Backtrader metrics") from e
+
+
     def _log_portfolio_metrics(self, metrics):
         """Log portfolio metrics to MLflow with artifacts"""
         try:
             # Log main metrics
             portfolio_metrics = {
-                f"portfolio/value": metrics["portfolio_value"],
+                f"portfolio/balance": metrics["portfolio_balance"],
                 f"portfolio/total_return": metrics["total_return"],
                 f"portfolio/max_drawdown": metrics["max_drawdown"],
                 f"portfolio/sharpe_ratio": metrics["sharpe_ratio"],
                 f"portfolio/win_rate": metrics["win_rate"],
                 f"portfolio/total_trades": metrics["total_trades"],
+                f"portfolio/profitable_trades": metrics["profitable_trades"],
+                f"portfolio/losing_trades": metrics["losing_trades"],
                 f"portfolio/profit_factor": metrics["profit_factor"],
+                f"portfolio/avg_winning_trade": metrics["avg_winning_trade"],
+                f"portfolio/avg_losing_trade": metrics["avg_losing_trade"],
+                f"portfolio/max_consecutive_wins": metrics["max_consecutive_wins"],
+                f"portfolio/max_consecutive_losses": metrics["max_consecutive_losses"],
+                f"portfolio/final_cash": metrics["final_cash"],
+                f"portfolio/final_position_value": metrics["final_position_value"],
                 f"portfolio/action_hold_ratio": metrics["action_counts"][0] / max(1, sum(metrics["action_counts"].values())),
                 f"portfolio/action_buy_ratio": metrics["action_counts"][1] / max(1, sum(metrics["action_counts"].values())),
                 f"portfolio/action_sell_ratio": metrics["action_counts"][2] / max(1, sum(metrics["action_counts"].values()))
@@ -469,13 +456,15 @@ class MLflowLoggingCallback(BaseCallback):
             })
             
             # Create and save portfolio performance plot
-            if self.save_plots and len(metrics["portfolio_values"]) > 10:
+            if self.save_plots and len(metrics["portfolio_balances"]) > 10:
                 self._create_portfolio_plot(metrics)
             
             if self.verbose > 0:
-                print(f"Portfolio - Value: ${metrics['portfolio_value']:.2f}, "
+                print(f"Portfolio - Value: ${metrics['portfolio_balance']:.2f}, "
                       f"Return: {metrics['total_return']*100:.2f}%, "
-                      f"Drawdown: {metrics['max_drawdown']*100:.2f}%")
+                      f"Drawdown: {metrics['max_drawdown']*100:.2f}%, "
+                      f"Win Rate: {metrics['win_rate']*100:.1f}%, "
+                      f"Trades: {metrics['total_trades']}")
                 
         except Exception as e:
             if self.verbose > 0:
@@ -487,9 +476,9 @@ class MLflowLoggingCallback(BaseCallback):
             fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
             
             # Portfolio value over time
-            ax1.plot(metrics["portfolio_values"])
-            ax1.set_title(f"Portfolio Value - {self.timeframe}")
-            ax1.set_ylabel("Portfolio Value ($)")
+            ax1.plot(metrics["portfolio_balances"])
+            ax1.set_title(f"Portfolio Balance - {self.timeframe}")
+            ax1.set_ylabel("Portfolio Balance ($)")
             ax1.grid(True)
             
             # Daily returns distribution
@@ -500,9 +489,9 @@ class MLflowLoggingCallback(BaseCallback):
             ax2.grid(True)
             
             # Drawdown over time
-            portfolio_values = np.array(metrics["portfolio_values"])
-            peak_values = np.maximum.accumulate(portfolio_values)
-            drawdowns = (peak_values - portfolio_values) / peak_values
+            portfolio_balances = np.array(metrics["portfolio_balances"])
+            peak_balances = np.maximum.accumulate(portfolio_balances)
+            drawdowns = (peak_balances - portfolio_balances) / peak_balances
             ax3.fill_between(range(len(drawdowns)), drawdowns, alpha=0.3, color='red')
             ax3.set_title("Drawdown Over Time")
             ax3.set_ylabel("Drawdown (%)")
@@ -748,7 +737,7 @@ class MLflowLoggingCallback(BaseCallback):
             
             # Collect results from multiple episodes
             all_rewards = []
-            all_portfolio_values = []
+            all_portfolio_balances = []
             all_returns = []
             
             for episode in range(n_final_episodes):
@@ -769,7 +758,7 @@ class MLflowLoggingCallback(BaseCallback):
                         break
                 
                 all_rewards.append(episode_reward)
-                all_portfolio_values.append(current_value)
+                all_portfolio_balances.append(current_value)
                 all_returns.append((current_value / initial_value) - 1)
             
             # Calculate comprehensive final metrics
@@ -778,7 +767,7 @@ class MLflowLoggingCallback(BaseCallback):
                 f"final/std_reward": np.std(all_rewards),
                 f"final/min_reward": np.min(all_rewards),
                 f"final/max_reward": np.max(all_rewards),
-                f"final/mean_portfolio_value": np.mean(all_portfolio_values),
+                f"final/mean_portfolio_balance": np.mean(all_portfolio_balances),
                 f"final/mean_return": np.mean(all_returns),
                 f"final/std_return": np.std(all_returns),
                 f"final/min_return": np.min(all_returns),
@@ -813,7 +802,7 @@ class MLflowLoggingCallback(BaseCallback):
                     if 'metrics' in simplified_entry:
                         metrics = simplified_entry['metrics'].copy()
                         # Keep only summary statistics, not full arrays
-                        metrics.pop('portfolio_values', None)
+                        metrics.pop('portfolio_balance', None)
                         metrics.pop('daily_returns', None)
                         metrics.pop('trade_results', None)
                         simplified_entry['metrics'] = metrics
@@ -862,8 +851,8 @@ class MLflowLoggingCallback(BaseCallback):
             if self.portfolio_history:
                 ax2 = fig.add_subplot(gs[0, 2:4])
                 steps = [entry["step"] for entry in self.portfolio_history]
-                values = [entry["metrics"]["portfolio_value"] for entry in self.portfolio_history]
-                ax2.plot(steps, values, 'g-', linewidth=2)
+                balances = [entry["metrics"]["portfolio_balance"] for entry in self.portfolio_history]
+                ax2.plot(steps, balances, 'g-', linewidth=2)
                 ax2.set_title("Portfolio Value Progress")
                 ax2.set_xlabel("Training Steps")
                 ax2.set_ylabel("Portfolio Value ($)")

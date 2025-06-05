@@ -44,6 +44,9 @@ def train_timeframe_model(
     enhancement_type: str = "continued",
     auto_find_model: bool = True,
     non_destructive: bool = True,
+    stock_id: Optional[str] = 1,
+    start_date: Optional[str] ="2024-01-01",
+    end_date: Optional[str] = "2025-01-01"
 ):
     """
     Train RL model for specific timeframe with comprehensive MLflow tracking
@@ -209,6 +212,7 @@ def train_timeframe_model(
         split_idx = int(len(data) * 0.8)
         training_data = data[:split_idx]
         eval_data = data[split_idx:]
+        max_eval_episode_length = len(eval_data) - 1  # Ensure at least one step for evaluation
         
         mlflow_manager.log_metrics({
             "training_samples": len(training_data),
@@ -221,7 +225,10 @@ def train_timeframe_model(
             training_data,
             normalize_observations=config["normalize_observations"],
             reward_type=config["reward_type"],
-            timeframe_id=timeframe_id
+            timeframe_id=timeframe_id ,
+            stock_id=stock_id,
+            start_date=start_date,
+            end_date=end_date
         )
         
         # Create evaluation environment
@@ -230,6 +237,9 @@ def train_timeframe_model(
             normalize_observations=config["normalize_observations"],
             reward_type=config["reward_type"],
             timeframe_id=timeframe_id,
+            stock_id=stock_id,
+            start_date=start_date,
+            end_date=end_date
         )
         eval_env = Monitor(eval_env_base)
         
@@ -284,11 +294,11 @@ def train_timeframe_model(
             mlflow_manager=mlflow_manager,
             eval_env=eval_env,
             eval_freq=config["eval_freq"],
-            log_freq=min(config["eval_freq"] // 10, 500),  # Log training metrics frequently
+            log_freq=min(config["eval_freq"] // 10, 1000),  # Log training metrics frequently
             feature_importance_freq=config["eval_freq"] * 2,  # Calculate feature importance less frequently
             portfolio_eval_freq=config["eval_freq"],  # Portfolio evaluation at same frequency as general eval
             n_eval_episodes=3,  # Multiple episodes for better statistics
-            max_eval_steps=500,  # Prevent infinite loops
+            max_eval_steps=max_eval_episode_length,  # Prevent infinite loops
             risk_free_rate=0.02,  # 2% annual risk-free rate for Sharpe calculation
             save_plots=True,  # Enable comprehensive plot generation
             save_model_checkpoints=True,  # Enable automatic model checkpointing
@@ -306,7 +316,7 @@ def train_timeframe_model(
         # Train model
         print(f"\n🚀 Starting {timeframe} model training for {config['timesteps']} timesteps...")
         print(f"📊 Unified callback will monitor:")
-        print(f"   • Training metrics every {min(config['eval_freq'] // 10, 500)} steps")
+        print(f"   • Training metrics every {min(config['eval_freq'] // 10, 1000)} steps")
         print(f"   • Model evaluation every {config['eval_freq']} steps") 
         print(f"   • Portfolio performance every {config['eval_freq']} steps")
         print(f"   • Feature importance every {config['eval_freq'] * 2} steps")
@@ -463,7 +473,7 @@ if __name__ == "__main__":
     parser.add_argument("--timeframe", type=str, default="1H", 
                        choices=["D", "4H", "1H", "30M", "15M", "5M", "1M"],
                        help="Timeframe for the model")
-    parser.add_argument("--timesteps", type=int, default=100000,
+    parser.add_argument("--timesteps", type=int, default=20000,
                        help="Number of training timesteps")
     parser.add_argument("--experiment", type=str, default="stock_trading_rl",
                        help="MLflow experiment name")
@@ -486,7 +496,7 @@ if __name__ == "__main__":
     # Prepare config
     config = {
         "timesteps": args.timesteps,
-        "eval_freq": min(10000, args.timesteps // 20),
+        "eval_freq": 10000,
         "reward_type": "combined"
     }
     

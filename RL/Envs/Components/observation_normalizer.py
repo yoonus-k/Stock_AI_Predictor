@@ -29,17 +29,17 @@ class ObservationNormalizer:
         """
         self.enable_adaptive_scaling = enable_adaptive_scaling
         self.output_range = output_range
-        self.clip_outliers = clip_outliers
-        
-        # Define feature indices for each category
-        # These must match the order in _get_observation() method in trading_env.py
+        self.clip_outliers = clip_outliers        # Define feature indices for each category
+        # These must match the order in the separated feature structure:
+        # Market features (24): Pattern(7) + Technical(3) + Sentiment(1) + COT(6) + Time(7)
+        # Portfolio features (6): balance_ratio, portfolio_max_drawdown, win_rate, avg_pnl_per_hour, decisive_exits, recovery_factor
         self.feature_indices = {
-            'pattern': list(range(0, 7)),
-            'technical': list(range(7, 10)),
-            'sentiment': list(range(10, 12)),
-            'cot': list(range(12, 18)),
-            'time': list(range(18, 25)),
-            'portfolio': list(range(25, 30))
+            'pattern': list(range(0, 7)),       # 7 features: probability, action, reward_risk_ratio, max_gain, max_drawdown, mse, expected_value
+            'technical': list(range(7, 10)),    # 3 features: rsi, atr, atr_ratio  
+            'sentiment': list(range(10, 11)),   # 1 feature: unified_sentiment
+            'cot': list(range(11, 17)),         # 6 features: change_nonrept_long, change_nonrept_short, change_noncommercial_long, change_noncommercial_short, change_noncommercial_delta, change_nonreportable_delta
+            'time': list(range(17, 24)),        # 7 features: hour_sin, hour_cos, day_sin, day_cos, asian_session, london_session, ny_session
+            'portfolio': list(range(24, 30))    # 6 features: balance_ratio, portfolio_max_drawdown, win_rate, avg_pnl_per_hour, decisive_exits, recovery_factor
         }
         
         # Define normalization ranges for each feature
@@ -64,36 +64,32 @@ class ObservationNormalizer:
             
             # Technical Indicators
             7: (0, 100, 50.0),       # rsi [DB: 20.53-80.90]
-            8: (0, 100, 7.5),         # atr [DB: 2.43-13.63]
-            9: (0.001, 0.01, 0.0035),   # atr_ratio [DB: 0.0012-0.0057]
+            8: (0, 100, 50),         # atr [DB: 2.43-13.63]
+            9: (0.001, 0.01, 0.0055),   # atr_ratio [DB: 0.0012-0.0057]
+              # Sentiment Features  
+            10: (-1.0, 1.0, 0.0),        # unified_sentiment [DB: -0.63-0.79]
             
-            # Sentiment Features
-            10: (-1, 1, 0.0),        # unified_sentiment [DB: -0.63-0.79]
-            11: (0.0, 100, 3.0),         # sentiment_count [DB: 0-6]
-            
-            # COT Data - Adding margins for future variation
-            12: (-1000000, 1000000, 0),   # net_noncommercial [DB: 131168-315390]
-            13: (-1000000, 1000000, 0),     # net_nonreportable [DB: 15499-30285]
-            14: (-100000, 100000, 0.0),        # change_nonrept_long [DB: -5847-5839]
-            15: (-100000,100000, 0.0),        # change_nonrept_short [DB: -5985-7056]
-            16: (-100000, 100000, 0.0),      # change_noncommercial_long [DB: -29820-49200]
-            17: (-10000, 100000, 0.0),      # change_noncommercial_short [DB: -21924-19452]
-              # Time Features - Based on DB values, most already normalized
-            18: (-1.0, 1.0, 0.0),        # hour_sin [DB: -1.0-1.0]
-            19: (-1.0, 1.0, 0.0),        # hour_cos [DB: -1.0-0.97] 
-            20: (-0.5, 1.0, 0.0),        # day_sin [DB: -0.43-0.97]
-            21: (-1.0, 1.1, 0.0),        # day_cos [DB: -0.90-1.0]
-            22: (0.0, 1.0, 0.0),         # asian_session [DB: 0-1]
-            23: (0.0, 1.0, 0.0),         # london_session [DB: 0-1]
-            24: (0.0, 1.0, 0.0),         # ny_session [DB: 0-1]
-            
-            # Portfolio Features - Using conservative ranges with room for growth
-            25: (0.0, 2.0, 1.0),         # balance_ratio [0, +inf)
-            26: (0.0, 1.0, 0.5),         # position_ratio [0, 1]
-            27: (-1000.0, 1000.0, 0.0),  # position [-inf, +inf]
-            28: (-1.0, 0.0, 0.0),        # max_drawdown [-1, 0]
-            29: (0.0, 1.0, 0.5)     ,     # win_rate [0, 1]
-            30: (0.0,10.0, 5)        # profit_factor [0, +inf)
+            # COT Data - Based on actual column names used in observations
+            11: (-1000000, 1000000, 0.0),        # change_nonrept_long [DB: -5847-5839]
+            12: (-1000000, 1000000, 0.0),        # change_nonrept_short [DB: -5985-7056]
+            13: (-1000000, 1000000, 0.0),        # change_noncommercial_long [DB: -29820-49200]
+            14: (-1000000, 1000000, 0.0),        # change_noncommercial_short [DB: -21924-19452]
+            15: (-1000000, 1000000, 0.0),        # change_noncommercial_delta
+            16: (-1000000, 1000000, 0.0),        # change_nonreportable_delta            # Time Features - Based on DB values, most already normalized
+            17: (-1.0, 1.0, 0.0),        # hour_sin [DB: -1.0-1.0]
+            18: (-1.0, 1.0, 0.0),        # hour_cos [DB: -1.0-0.97] 
+            19: (-1.0, 1.0, 0.0),        # day_sin [DB: -0.43-0.97]
+            20: (-1.0, 1.0, 0.0),        # day_cos [DB: -0.90-1.0]
+            21: (0.0, 1.0, 0.0),         # asian_session [DB: 0-1]
+            22: (0.0, 1.0, 0.0),         # london_session [DB: 0-1]
+            23: (0.0, 1.0, 0.0),         # ny_session [DB: 0-1]
+                # Portfolio Features - Updated feature names and ranges
+            24: (0.0, 10.0, 1.0),         # balance_ratio [0, +inf)
+            25: (-1.0, 0.0, 0.0),         # portfolio_max_drawdown [-1, 0] (negative drawdown values)
+            26: (0.0, 1.0, 0.5),          # win_rate [0, 1]
+            27: (-0.1, 0.1, 0.0),         # avg_pnl_per_hour (P&L per hour efficiency)
+            28: (0.0, 1.0, 0.5),          # decisive_exits (ratio of TP/SL vs timeout)
+            29: (0.0, 10.0, 1.0),         # recovery_factor (gains/drawdown ratio)
         }
     
     def normalize_feature(self, value: float, feature_idx: int) -> float:

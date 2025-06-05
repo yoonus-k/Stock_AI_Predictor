@@ -28,4 +28,4 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["RL", "Data", "Pattern", "Utils", "Experements", "Sentiment"]
+packages = ["RL", "Data", "Pattern", "Utils", "Experements", "Sentiment","Backtrader"]

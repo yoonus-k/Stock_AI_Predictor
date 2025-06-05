@@ -260,15 +260,15 @@ def evaluate_model(model, env, n_episodes=5):
         Mean reward across episodes
     """
     all_rewards = []
-    
     for episode in range(n_episodes):
         obs = env.reset()
         done = False
+        truncated = False
         episode_reward = 0
         
-        while not done:
+        while not (done or truncated):
             action, _ = model.predict(obs, deterministic=True)
-            obs, reward, done, info = env.step(action)
+            obs, reward, done, truncated, info = env.step(action)
             episode_reward += reward
         
         all_rewards.append(episode_reward)

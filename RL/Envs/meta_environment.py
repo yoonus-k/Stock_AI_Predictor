@@ -138,10 +138,10 @@ class MetaTradingEnv(gym.Env):
         
         # Calculate reward
         reward = self._calculate_reward(prev_position)
-        
-        # Move to next step
+          # Move to next step
         self.current_step += 1
         done = self.current_step >= len(self.data) - 1
+        truncated = False  # Add truncated flag for gym compatibility
         
         # Get new observation
         obs = self._get_observation()
@@ -154,7 +154,7 @@ class MetaTradingEnv(gym.Env):
             'trades': len(self.trades)
         }
         
-        return obs, reward, done, info
+        return obs, reward, done, truncated, info
     
     def _get_observation(self):
         """

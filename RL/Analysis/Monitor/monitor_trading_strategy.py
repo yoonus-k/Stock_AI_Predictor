@@ -305,7 +305,7 @@ def run_model_on_data(model, env, data=None, max_steps=None, deterministic=True)
         # Get current price from environment
         current_price = 1
         timestamp = (
-            env.data.index[env.index - 1] if env.index > 0 else env.data.index[0]
+            env.feutures.index[env.index - 1] if env.index > 0 else env.feutures.index[0]
         )
 
         # Update tracker
@@ -344,7 +344,7 @@ def run_model_on_data(model, env, data=None, max_steps=None, deterministic=True)
             episode_count += 1
 
             # Break if we're out of data
-            if env.index >= len(env.data):
+            if env.index >= len(env.feutures):
                 break
 
             # Reset environment

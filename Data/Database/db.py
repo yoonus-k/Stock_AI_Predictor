@@ -305,7 +305,6 @@ class Database:
             df.sort_index(inplace=True)
         
         return df
-    
     def get_stock_data_range(self, stock_id, timeframe_id, start_date, end_date):
         """
         Get stock data for a specific date range.
@@ -319,14 +318,14 @@ class Database:
         Returns:
             DataFrame: Stock data within the specified range
         """
-       
-        
-        stock_data = self.connection.execute("""
+        query = """
             SELECT * FROM stock_data 
             WHERE stock_id = ? AND timeframe_id = ?
                 AND timestamp >= ? AND timestamp <= ?
             ORDER BY timestamp
-        """, (stock_id, timeframe_id, start_date, end_date)).fetchall()
+        """
+        
+        stock_data = self.fetch_all(query, (stock_id, timeframe_id, start_date, end_date))
    
         columns = ['entry_id', 'stock_id', 'timeframe_id', 'timestamp', 'open_price', 
                    'high_price', 'low_price', 'close_price', 'volume']
@@ -338,6 +337,39 @@ class Database:
             df.sort_index(inplace=True)
         
         return df
+    
+    # function to get the stock close price for a range of dates
+    def get_stock_close_prices(self, stock_id, timeframe_id, start_date, end_date):
+        """
+        Get stock close prices for a specific date range.
+        
+        Args:
+            stock_id (int): ID of the stock
+            timeframe_id (int): ID of the timeframe
+            start_date (str): Start date in format 'YYYY-MM-DD'
+            end_date (str): End date in format 'YYYY-MM-DD'
+            
+        Returns:
+            DataFrame: Stock close prices within the specified range
+        """
+        query = """
+            SELECT timestamp, close_price FROM stock_data 
+            WHERE stock_id = ? AND timeframe_id = ?
+                AND timestamp >= ? AND timestamp <= ?
+            ORDER BY timestamp
+        """
+        
+        params = (stock_id, timeframe_id, start_date, end_date)
+        stock_data = self.fetch_all(query, params)
+        
+        df = pd.DataFrame(stock_data, columns=['timestamp', 'close_price'])
+        if not df.empty:
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df.set_index('timestamp', inplace=True)
+            df.sort_index(inplace=True)
+        
+        return df
+    
     
     def store_stock_data(self, stock_data, stock_id, timeframe_id):
         """

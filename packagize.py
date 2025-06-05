@@ -3,6 +3,9 @@ import os
 def add_init_files(directory):
     """Adds __init__.py files to all subdirectories within the given directory."""
     for root, dirs, files in os.walk(directory):
+        # Exclude mlruns folder from being packagized
+        dirs[:] = [d for d in dirs if d != 'mlruns']
+        
         for dir_name in dirs:
             init_file_path = os.path.join(root, dir_name, '__init__.py')
             if not os.path.exists(init_file_path):

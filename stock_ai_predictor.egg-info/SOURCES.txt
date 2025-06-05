@@ -1,6 +1,12 @@
 LICENSE
 README.md
 pyproject.toml
+Backtrader/__init__.py
+Backtrader/analyzers.py
+Backtrader/data_feeds.py
+Backtrader/metrics_extractor.py
+Backtrader/portfolio_evaluator.py
+Backtrader/rl_strategy.py
 Data/__init__.py
 Experements/__init__.py
 Pattern/__init__.py
@@ -18,6 +24,7 @@ Utils/integrated_trading.py
 Utils/req_generator.py
 stock_ai_predictor.egg-info/PKG-INFO
 stock_ai_predictor.egg-info/SOURCES.txt
+stock_ai_predictor.egg-info/__init__.py
 stock_ai_predictor.egg-info/dependency_links.txt
 stock_ai_predictor.egg-info/requires.txt
 stock_ai_predictor.egg-info/top_level.txt

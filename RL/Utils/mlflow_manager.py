@@ -46,14 +46,18 @@ class MLflowManager:
         else:
             self.experiment_name = experiment_name
         
-        # Set tracking URI - use local directory if not specified
+        # Set tracking URI with Windows-compatible format
         if tracking_uri is None:
-            # Use local MLflow tracking in the project directory
-            project_root = Path(__file__).parent.parent.parent
-            tracking_uri = f"file://{project_root}/mlruns"
+            # Use absolute path for Windows compatibility
+            project_root = Path(__file__).resolve().parent.parent.parent
+            mlruns_path = project_root / "mlruns"
+            # Use file:// prefix for proper URI format
+            tracking_uri = f"file:///{str(mlruns_path).replace(chr(92), '/')}"  # Convert backslashes to forward slashes
         
+        # Set tracking URI
         mlflow.set_tracking_uri(tracking_uri)
         print(f"MLflow tracking URI: {tracking_uri}")
+    
         
         # Create or get experiment
         try:
@@ -196,14 +200,13 @@ class MLflowManager:
                 model_path = os.path.join(temp_dir, f"{model_name}.zip")
                 model.save(model_path)
                 mlflow.log_artifact(model_path, f"models/{self.timeframe}")
-                print(f"SB3 model logged as artifact: {model_name}")
-                
+                print(f"SB3 model logged as artifact: {model_name}")                
         except Exception as e:
             print(f"Error logging SB3 model: {e}")
     
-    def log_file_artifact(self, file_path: str, artifact_path: str = None):
+    def log_artifact(self, file_path: str, artifact_path: str = None):
         """
-        Log a file as an artifact
+        Log a file as an artifact (primary method used by callback)
         
         Args:
             file_path: Path to the file to log
@@ -217,6 +220,16 @@ class MLflowManager:
             print(f"File logged as artifact: {file_path}")
         except Exception as e:
             print(f"Error logging file {file_path}: {e}")
+    
+    def log_file_artifact(self, file_path: str, artifact_path: str = None):
+        """
+        Log a file as an artifact (alias for log_artifact for backward compatibility)
+        
+        Args:
+            file_path: Path to the file to log
+            artifact_path: Path within artifact directory
+        """
+        self.log_artifact(file_path, artifact_path)
     
     def log_directory_artifacts(self, directory_path: str, artifact_path: str = None):
         """

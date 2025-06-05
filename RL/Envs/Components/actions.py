@@ -9,54 +9,59 @@ class ActionHandler:
     in the trading environment.
     Uses MultiDiscrete action space for better compatibility with PPO.
     """
-    
     def __init__(self):
         """
         Initialize the action handler with MultiDiscrete action space
         
         Action space components:
         - Action type: 0=HOLD, 1=BUY, 2=SELL
-        - Position size: discretized (0=0.1, 1=0.2, ..., 9=1.0)
+        - Position size: discretized (0=0.005, 1=0.01, ..., 19=0.1) representing account risk percentage
         - Risk reward: discretized (0=0.5, 1=0.75, ..., 9=3.0)
-        """
-        # Define the action space as MultiDiscrete
+        - Hold time: discretized holding periods in hours (0=3h, 1=6h, 2=9h, ..., 9=30h)
+        """# Define the action space as MultiDiscrete
         self.action_space = MultiDiscrete([
             3,              # Action type: 0=HOLD, 1=BUY, 2=SELL
-            10,             # Position size: discretized (0=0.1, 1=0.2, ..., 9=1.0)
-            10              # Risk reward: discretized (0=0.5, 1=0.75, ..., 9=3.0)
+            20,             # Position size: discretized (0=0.005, 1=0.01, ..., 19=0.1) (% from the account to risk)
+            10,             # Risk reward: discretized (0=0.5, 1=0.75, ..., 9=3.0)
+            10              # Hold time: discretized (0=3h, 1=6h, 2=9h, 3=12h, 4=15h, 5=18h, 6=21h, 7=24h, 8=27h, 9=30h)
         ])
         
         # Action tracking for monitoring
         self.action_counts = [0, 0, 0]  # [HOLD, BUY, SELL] counts
         self.steps_without_action = 0  # Track consecutive HOLD actions
-
+    
     def reset(self):
         """Reset action tracking variables"""
         self.action_counts = [0, 0, 0]
         self.steps_without_action = 0
-    def process_action(self, action: np.ndarray) -> Tuple[int, float, float]:
+    def process_action(self, action: np.ndarray) -> Tuple[int, float, float, int]:
         """
         Process the raw action from the agent into actionable components
         
         Args:
-            action: Raw action array from agent [action_type, position_size_idx, risk_reward_idx]
+            action: Raw action array from agent [action_type, position_size_idx, risk_reward_idx, hold_time_idx]
             
         Returns:
-            Tuple[int, float, float]: (action_type, position_size, risk_reward_multiplier)
+            Tuple[int, float, float, int]: (action_type, position_size, risk_reward_multiplier, hold_time_hours)
               - action_type: 0=HOLD, 1=BUY, 2=SELL
-              - position_size: Fraction of portfolio to trade (0.1-1.0)
+              - position_size: Fraction of portfolio to risk (0.005-0.1)
               - risk_reward_multiplier: Multiplier for risk-reward ratio (0.5-3.0)
+              - hold_time_hours: Position holding time in hours (3-30)
         """
         # Extract discrete action components
         action_type = int(action[0])  # Already 0, 1, or 2
         
         # Map position size from discrete index to continuous value
-        # 0->0.1, 1->0.2, ..., 9->1.0
-        position_size = 0.1 + (action[1] * 0.1)
+        # 0->0.005, 1->0.01, ..., 19->0.1
+        position_size = 0.005 + (action[1] * 0.005)
         
         # Map risk reward from discrete index to continuous value
         # 0->0.5, 1->0.75, ..., 9->3.0
         risk_reward_multiplier = 0.5 + (action[2] * 0.25)
+        
+        # Map hold time from discrete index to hours
+        # Using 3h increments: 3h, 6h, 9h, 12h, 15h, 18h, 21h, 24h, 27h, 30h
+        hold_time_hours = 3 + (action[3] * 3)
         
         # Update action tracking
         if action_type == 0:  # HOLD
@@ -67,7 +72,7 @@ class ActionHandler:
         # Update action counts for monitoring
         self.action_counts[action_type] += 1
         
-        return action_type, position_size, risk_reward_multiplier
+        return action_type, position_size, risk_reward_multiplier, hold_time_hours
     
     def adaptive_position_sizing(self, base_position_size: float, balance: float, 
                                peak_balance: float, returns_history: List[float],
@@ -135,7 +140,7 @@ class ActionHandler:
         
         Returns:
             Dict: Statistics about actions
-        """
+        """        
         total_actions = sum(self.action_counts)
         if total_actions == 0:
             return {
@@ -144,7 +149,6 @@ class ActionHandler:
                 "sell_pct": 0.0,
                 "consecutive_holds": self.steps_without_action
             }
-            
         return {
             "hold_pct": self.action_counts[0] / total_actions * 100,
             "buy_pct": self.action_counts[1] / total_actions * 100,
@@ -154,9 +158,9 @@ class ActionHandler:
         
     def calculate_trade_targets(self, action_type: int, entry_price: float, max_gain: float, 
                               max_drawdown: float, risk_reward_multiplier: float, 
-                              pattern_action: int) -> Tuple[float, float]:
+                              pattern_action: int) -> Tuple[float, float, float]:
         """
-        Calculate take profit and stop loss prices for a trade
+        Calculate take profit, stop loss prices, and position size modifier for a trade
         
         Args:
             action_type: Action type (1=BUY, 2=SELL)
@@ -167,40 +171,50 @@ class ActionHandler:
             pattern_action: Action suggested by pattern (1=BUY, 2=SELL)
             
         Returns:
-            Tuple[float, float]: (take_profit_price, stop_loss_price)
+            Tuple[float, float, float]: (take_profit_price, stop_loss_price, position_size_modifier)
         """
+        # Default position size modifier (will be adjusted based on pattern match)
+        position_size_modifier = 1.0
+        
         # For long position (BUY)
         if action_type == 1:
-            # If agent agrees with pattern
+            # If agent agrees with pattern - 100% position size
             if pattern_action == 1:
-                tp_price = entry_price * (1 + (max_gain * risk_reward_multiplier))
-                sl_price = entry_price * (1 + (max_drawdown * (1/risk_reward_multiplier)))
-            # If agent contradicts pattern
+                tp_price = entry_price * (1 + (abs(max_gain) * risk_reward_multiplier))
+                sl_price = entry_price * (1 - abs(max_drawdown) )
+                position_size_modifier = 1.0  # Full position size for exact pattern match
+            # If agent contradicts pattern - 50% position size
             elif pattern_action == 2:
                 tp_price = entry_price * (1 + (abs(max_drawdown) * risk_reward_multiplier))
-                sl_price = entry_price * (1 - (abs(max_gain) * (1/risk_reward_multiplier)))
+                sl_price = entry_price * (1 - abs(max_gain) )
+                position_size_modifier = 0.5  # Half position size for contradicting pattern
             else:
-                # Default if pattern_action is neutral
+                # Default if pattern_action is neutral - 75% position size
                 tp_price = entry_price * (1 + (0.01 * risk_reward_multiplier))
-                sl_price = entry_price * (1 - (0.01 * (1/risk_reward_multiplier)))
+                sl_price = entry_price * (1 - (0.01 ))
+                position_size_modifier = 0.75  # 75% position size for neutral pattern
         
         # For short position (SELL)
         elif action_type == 2:
-            # If agent agrees with pattern
+            # If agent agrees with pattern - 100% position size
             if pattern_action == 2:
                 tp_price = entry_price * (1 - (abs(max_gain) * risk_reward_multiplier))
-                sl_price = entry_price * (1 + (abs(max_drawdown) * (1/risk_reward_multiplier)))
-            # If agent contradicts pattern
+                sl_price = entry_price * (1 + abs(max_drawdown) )
+                position_size_modifier = 1.0  # Full position size for exact pattern match
+            # If agent contradicts pattern - 50% position size
             elif pattern_action == 1:
                 tp_price = entry_price * (1 - (abs(max_drawdown) * risk_reward_multiplier))
-                sl_price = entry_price * (1 + (abs(max_gain) * (1/risk_reward_multiplier)))
+                sl_price = entry_price * (1 + abs(max_gain))
+                position_size_modifier = 0.5  # Half position size for contradicting pattern
             else:
-                # Default if pattern_action is neutral
+                # Default if pattern_action is neutral - 75% position size
                 tp_price = entry_price * (1 - (0.01 * risk_reward_multiplier))
-                sl_price = entry_price * (1 + (0.01 * (1/risk_reward_multiplier)))
+                sl_price = entry_price * (1 + (0.01 ))
+                position_size_modifier = 0.75  # 75% position size for neutral pattern
         else:
             # No TP/SL for HOLD actions
             tp_price = 0.0
             sl_price = 0.0
+            position_size_modifier = 0.0
             
-        return tp_price, sl_price
+        return tp_price, sl_price, position_size_modifier
