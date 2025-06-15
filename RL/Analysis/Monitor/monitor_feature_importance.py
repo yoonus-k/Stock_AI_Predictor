@@ -65,7 +65,7 @@ def calculate_permutation_importance(model, env, feature_names=None, num_episode
         model, 
         env, 
         n_eval_episodes=num_episodes,
-        deterministic=True
+        deterministic=False
     )
     print(f"Baseline reward: {baseline_mean_reward:.4f} ± {baseline_std_reward:.4f}")
     
@@ -86,7 +86,7 @@ def calculate_permutation_importance(model, env, feature_names=None, num_episode
                 model, 
                 modified_env,
                 n_eval_episodes=num_episodes,
-                deterministic=True
+                deterministic=False
             )
             
             # Calculate importance as the decrease in performance
@@ -129,7 +129,6 @@ def create_environment_with_shuffled_feature(env, feature_idx):
     base_modified_env = TradingEnv(
         unwrapped_env.data.copy(),
         normalize_observations=True,
-        enable_adaptive_scaling=False
     )
     
     # Wrap with action converter
@@ -184,7 +183,7 @@ def analyze_feature_ablation(model, env, feature_names=None, num_episodes=5, gro
         model, 
         env, 
         n_eval_episodes=num_episodes,
-        deterministic=True
+        deterministic=False
     )
     print(f"Baseline reward (all features): {baseline_mean_reward:.4f} ± {baseline_std_reward:.4f}")
     
@@ -217,7 +216,7 @@ def analyze_feature_ablation(model, env, feature_names=None, num_episodes=5, gro
             model,
             masked_env,
             n_eval_episodes=num_episodes,
-            deterministic=True
+            deterministic=False
         )
         
         # Calculate importance
@@ -256,7 +255,6 @@ def create_environment_with_masked_features(env, feature_indices):
     base_masked_env = TradingEnv(
         unwrapped_env.data.copy(),
         normalize_observations=True,
-        enable_adaptive_scaling= False
     )
     
     # Wrap with action converter
@@ -478,7 +476,6 @@ def analyze_feature_importance(model_path, data=None, output_dir=None, num_episo
     base_env = TradingEnv(
         data,
         normalize_observations=True,
-        enable_adaptive_scaling=False
     )
     # Wrap with action converter for compatibility with the trained model
     

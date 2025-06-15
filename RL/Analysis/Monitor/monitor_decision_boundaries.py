@@ -76,7 +76,7 @@ def generate_decision_boundary(model, feature1_idx, feature2_idx, feature_names,
             observation[feature1_idx] = f1_grid[i, j]
             observation[feature2_idx] = f2_grid[i, j]
               # Get action and value from model
-            action, _ = model.predict(observation, deterministic=True)
+            action, _ = model.predict(observation, deterministic=False)
             
             # Handle MultiDiscrete action space - extract action type only for boundary visualization
             if hasattr(action, '__len__') and len(action) > 1:
@@ -235,7 +235,7 @@ def visualize_state_space(model, eval_env, num_episodes=5, num_samples=1000, out
         truncated = False
         while not (done or truncated) and sample_count < num_samples:
             # Get action and value from model
-            action, _ = model.predict(obs, deterministic=True)
+            action, _ = model.predict(obs, deterministic=False)
             
             # Handle MultiDiscrete action space - extract action type for visualization
             if hasattr(action, '__len__') and len(action) > 1:
@@ -403,7 +403,7 @@ def analyze_pattern_recognition(model, eval_env, output_dir=None):
     truncated = False
     while not (done or truncated):
         # Get action from model
-        action, _ = model.predict(obs, deterministic=True)
+        action, _ = model.predict(obs, deterministic=False)
         
         # Handle MultiDiscrete action space - extract action type for analysis
         if hasattr(action, '__len__') and len(action) > 1:
@@ -538,7 +538,6 @@ def run_decision_boundary_analysis(model_path, data=None, output_dir=None):
     env = TradingEnv(
         data,
         normalize_observations=True,
-        enable_adaptive_scaling=False
     )
     
     # 1. Visualize decision boundaries

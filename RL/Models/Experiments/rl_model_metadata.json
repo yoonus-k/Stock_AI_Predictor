@@ -1,8 +1,0 @@
-{
-  "training_data_size": 4671,
-  "eval_data_size": 1168,
-  "timesteps": 100000,
-  "eval_freq": 10000,
-  "feature_count": 31,
-  "training_date": "2025-06-01 20:24:56"
-}

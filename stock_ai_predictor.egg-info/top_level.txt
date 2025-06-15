@@ -1,6 +1,8 @@
-Backtrader
+Backtesting
 Data
 Experements
+Interface
+Lib
 Pattern
 RL
 Sentiment

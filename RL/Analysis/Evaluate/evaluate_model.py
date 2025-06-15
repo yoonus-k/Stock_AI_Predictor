@@ -87,7 +87,7 @@ def evaluate_model(model_path,save_path, data=None, reward_type='combined', rend
     
     while not done and step < max_steps:
         # Get raw action from model
-        action, _ = model.predict(obs, deterministic=True)
+        action, _ = model.predict(obs, deterministic=False)
         
         # Store raw action for analysis        raw_actions.append(action.copy())
         

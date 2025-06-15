@@ -162,7 +162,7 @@ Box space with shape `(31,)`, normalized to range `[-1.0, 1.0]`
 | `reward_type` | String | 'combined' | Type of reward function |
 | `normalize_observations` | Bool | True | Enable observation normalization |
 | `normalization_range` | Tuple | (-1.0, 1.0) | Range for normalized values |
-| `enable_adaptive_scaling` | Bool | False | Enable adaptive feature scaling |
+
 
 ### Episode Termination Conditions
 

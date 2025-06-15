@@ -190,7 +190,7 @@ class EvalCallback(BaseCallback):
         log_path=None,
         eval_freq=10000,
         n_eval_episodes=5,
-        deterministic=True,
+        deterministic=False,
         render=False,
         verbose=1,
         warn_on_eval_error=True,
@@ -526,7 +526,7 @@ class PortfolioTrackingCallback(BaseCallback):
 
                     # Get action from model with error handling
                     try:
-                        action, _states = model.predict(obs, deterministic=True)
+                        action, _states = model.predict(obs, deterministic=False)
                     except Exception as e:
                         print(f"Error during prediction: {e}")
                         break  

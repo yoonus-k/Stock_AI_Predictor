@@ -12,6 +12,30 @@ class ObservationHandler:
     A class to handle observation creation and processing in the trading environment.
     Extracts features from data and creates observation vectors.
     """
+                
+            # Market features from database (24 features)
+    MARKET_FEATURE_NAMES = [
+        # Pattern features (7)
+        "probability", "action", "reward_risk_ratio", "max_gain", "max_drawdown", "mse", "expected_value",
+        # Technical indicators (3)
+        "rsi", "atr", "atr_ratio",
+        # Sentiment features (1)
+        "unified_sentiment",
+        # COT data (6)
+        "change_nonrept_long", "change_nonrept_short",
+        "change_noncommercial_long", "change_noncommercial_short",
+        "change_noncommercial_delta", "change_nonreportable_delta",
+        # Time features (7)
+        "hour_sin", "hour_cos", "day_sin", "day_cos", "asian_session", "london_session", "ny_session"
+    ]
+    
+    # Portfolio features calculated at runtime (6 features)
+    PORTFOLIO_FEATURE_NAMES = [
+        "balance_ratio", "portfolio_max_drawdown", "win_rate", "avg_pnl_per_hour", "decisive_exits", "recovery_factor"
+    ]
+    
+    # Complete feature list (24 + 6 = 30 features)
+    ALL_FEATURE_NAMES = MARKET_FEATURE_NAMES + PORTFOLIO_FEATURE_NAMES
     
     def __init__(self, normalize_observations: bool = True , normalization_range: Tuple[float, float] = (-1.0, 1.0)):
         """
@@ -25,6 +49,7 @@ class ObservationHandler:
         # Initialize portfolio metrics for observation
         self.initial_balance = 0
         self.balance = 0
+        self.drawdown = 0
         self.max_drawdown = 0
         self.trade_count = 0
         self.winning_trades = 0
@@ -42,7 +67,6 @@ class ObservationHandler:
         
         if normalize_observations:
             self.normalizer = ObservationNormalizer(
-                enable_adaptive_scaling=False,
                 output_range= normalization_range,
             )
             self.observation_space = self.normalizer.get_normalized_observation_space()
@@ -56,6 +80,7 @@ class ObservationHandler:
                 shape=(sample_observation,),
                 dtype=np.float32
             )
+
     
     def reset(self, initial_balance: float):
         """
@@ -66,6 +91,7 @@ class ObservationHandler:
         """
         self.initial_balance = initial_balance
         self.balance = initial_balance
+        self.drawdown = 0
         self.max_drawdown = 0
         self.trade_count = 0
         self.winning_trades = 0
@@ -86,7 +112,7 @@ class ObservationHandler:
         if self.normalize_observations:
             self.normalizer.reset()
     
-    def update_portfolio_metrics(self, balance: float, max_drawdown: float, winning_trades: int, trade_count: int,
+    def update_portfolio_metrics(self, balance: float,drawdown:float, max_drawdown: float, winning_trades: int, trade_count: int,
                                 steps_without_action: int):
         """
         Update portfolio metrics for observation creation
@@ -101,12 +127,13 @@ class ObservationHandler:
             steps_without_action: Number of consecutive HOLD actions
         """
         self.balance = balance
+        self.drawdown = drawdown
         self.max_drawdown = max_drawdown
         self.winning_trades = winning_trades
         self.trade_count = trade_count
         self.steps_without_action = steps_without_action
     
-    def get_observation(self, data_point: pd.Series) -> np.ndarray:
+    def get_observation(self, market_features: pd.Series) -> np.ndarray:
         """
         Create observation vector from data point and portfolio metrics
         
@@ -116,59 +143,12 @@ class ObservationHandler:
         Returns:
             np.ndarray: Observation vector
         """
-        features = []
         
-        # Add base pattern features (directly from DataFrame)
-        base_features = [
-            data_point['probability'],
-            data_point['action'],
-            data_point['reward_risk_ratio'],
-            data_point['max_gain'],
-            data_point['max_drawdown'],
-            data_point['mse'],
-            data_point['expected_value']
-        ]
-        features.extend(base_features)
-        
-        # Technical indicators - based on actual column names in the dataset
-        technical_indicators = ['rsi', 'atr', 'atr_ratio']
-        for indicator in technical_indicators:
-            if indicator in data_point:
-                features.append(data_point[indicator])
-              # Sentiment features - based on actual column names
-        sentiment_features = ['unified_sentiment']
-        for feature in sentiment_features:
-            if feature in data_point:
-                features.append(data_point[feature])
-                
-        # COT data - based on actual column names in your dataset
-        cot_features = [
-            'change_nonrept_long', 'change_nonrept_short',
-            'change_noncommercial_long', 'change_noncommercial_short',
-            'change_noncommercial_delta', 'change_nonreportable_delta'
-        ]
-        for feature in cot_features:
-            if feature in data_point:
-                features.append(data_point[feature])
-            
-        # Time-based features - based on actual column names
-        time_features = ['hour_sin', 'hour_cos', 'day_sin', 'day_cos',
-                        'asian_session', 'london_session', 'ny_session']
-        for feature in time_features:
-            if feature in data_point:
-                features.append(data_point[feature])
-        
-        # Make sure we have at least the base features
-        while len(features) < 5:
-            features.append(0.0)
-            
-        # Convert to numpy array
-        market_features = np.array(features, dtype=np.float32)
-          # Portfolio features
+        # Portfolio features
         portfolio_features = np.array([
             self.balance / self.initial_balance,  # Normalized balance
-            self.max_drawdown,  # Add portfolio max drawdown
-            self.winning_trades / (self.trade_count + 1e-6),  # Add win rate as a feature
+            self.drawdown,  # Add portfolio current drawdown
+            self.winning_trades / (self.trade_count ) if self.trade_count else 0.5,  # Add win rate as a feature
             self.calculate_avg_pnl_per_hour(),  # P&L efficiency metric
             self.calculate_decisive_exits(),  # Exit strategy effectiveness
             self.calculate_recovery_factor(),  # Risk-adjusted performance

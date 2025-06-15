@@ -1,0 +1,90 @@
+Timer unit: 1e-07 s
+
+Total time: 0.012424 s
+File: D:\Users\yoonus\Documents\GitHub\Stock_AI_Predictor\Backtesting\data_provider.py
+Function: get_market_observation at line 354
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   354                                               def get_market_observation(self, datetime_key):
+   355                                                   """
+   356                                                   Get market observation features for current datetime
+   357                                                   
+   358                                                   Args:
+   359                                                       datetime_key: Current datetime from price data
+   360                                                       
+   361                                                   Returns:
+   362                                                       dict: Market observation features only
+   363                                                   """
+   364                                                   # Find closest observation by datetime
+   365      4297      10044.0      2.3      8.1          try:
+   366                                                       # Get the row index directly from mapping
+   367      4297      79333.0     18.5     63.9              row_idx = self._index_to_row[datetime_key]
+   368                                                       # Extract values from numpy array (much faster than pandas loc)
+   369      4297      19629.0      4.6     15.8              features = self._values_array[row_idx]
+   370                                           
+   371      4297      15234.0      3.5     12.3              return features
+   372                                                       
+   373                                                   except Exception as e:
+   374                                                       logger.warning(f"Could not get market observation for {datetime_key}: {e}")
+   375                                                       return {name: 0.0 for name in self.MARKET_FEATURE_NAMES}
+
+Total time: 2.62508 s
+File: D:\Users\yoonus\Documents\GitHub\Stock_AI_Predictor\Backtesting\strategies.py
+Function: _get_rl_action at line 158
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   158                                               def _get_rl_action(self, current_bar: int) -> List[int]:
+   159                                                   """Get action from RL model."""
+   160      4297      24822.0      5.8      0.1          if not self.model or not self.observation_manager:
+   161                                                       # Fallback raise an error if model or observation manager not set
+   162                                                       logger.error("RL model or observation manager not set, cannot get action")
+   163                                                   
+   164      4297       8045.0      1.9      0.0          try:
+   165                                                       # get the current time from the data
+   166      4297     371732.0     86.5      1.4              current_time = self.data.index[current_bar]
+   167                                                       
+   168                                                       # Get market observation from observation manager
+   169      4297     203310.0     47.3      0.8              self.current_observation = self.observation_manager.get_market_observation(current_time)
+   170                                           
+   171                                                       # Calculate portfolio features
+   172      4297    1052060.0    244.8      4.0              portfolio_features = self._calculate_portfolio_features()
+   173                                                       
+   174                                                       # Combine market and portfolio features
+   175      4297     199150.0     46.3      0.8              observation_array =np.concatenate([self.current_observation , portfolio_features]) 
+   176                                               
+   177      4297      14748.0      3.4      0.1              if self.normalizer:
+   178      4297     753905.0    175.4      2.9                  observation_array = self.normalizer.normalize_observation(observation_array)
+   179                                                           
+   180                                                       # Get RL model prediction with the complete observation
+   181      4297   23286952.0   5419.4     88.7              raw_action, _ = self.model.predict(observation_array, deterministic=True)
+   182                                                       
+   183      4297     110469.0     25.7      0.4              action_type, position_size_idx, risk_reward_idx, hold_time_idx = raw_action
+   184                                                       
+   185                                                       # Map action indices to actual values
+   186      4297      52900.0     12.3      0.2              position_size = self.action_mappings['position_sizes'][min(position_size_idx, 19)]
+   187      4297      19102.0      4.4      0.1              position_size/=self.position_size_devider  # Apply position size divisor
+   188      4297      16108.0      3.7      0.1              risk_reward = self.action_mappings['risk_rewards'][min(risk_reward_idx, 9)]
+   189      4297      14661.0      3.4      0.1              hold_time = self.action_mappings['hold_times'][min(hold_time_idx, 9)]
+   190                                                       
+   191                                                       # record the model's action history
+   192      8594      36795.0      4.3      0.1              self.model_action_history.append({
+   193      4297       6844.0      1.6      0.0                  'action_type': action_type,
+   194      4297       6579.0      1.5      0.0                  'position_size': position_size,
+   195      4297       5740.0      1.3      0.0                  'risk_reward': risk_reward,
+   196      4297       6261.0      1.5      0.0                  'hold_time': hold_time,
+   197      4297       6074.0      1.4      0.0                  'timestamp': current_time
+   198                                                       })
+   199                                                       
+   200                                                       
+   201                                                       # Log the action
+   202                                                       # convert back to list
+   203      4297      10413.0      2.4      0.0              actions = [action_type, position_size, risk_reward, hold_time]
+   204                                                           
+   205      4297      44091.0     10.3      0.2              return actions
+   206                                                       
+   207                                                   except Exception as e:
+   208                                                       logger.warning(f"RL prediction failed: {e}, using fallback")
+   209                                                       return [0, 0, 0, 0]  # Hold on error
+

@@ -15,6 +15,8 @@ import traceback
 # Import environment modules
 from RL.Data.Utils.loader import load_data_from_db
 from RL.Envs.trading_env import TradingEnv
+from RL.Envs.Components.observations import ObservationHandler
+from RL.Envs.Components.rewards import RewardCalculator
 
 
 # Import SB3 checker
@@ -35,7 +37,7 @@ def check_trading_environment():
             return
         
         # Use small subset for testing
-        small_dataset = rl_dataset.head(100)
+        small_dataset = rl_dataset.head(1000)
         print(small_dataset.head())  # Print first few rows for verification
         print(f"✅ Loaded {len(small_dataset)} records for testing.")
     except Exception as e:
@@ -73,36 +75,7 @@ def check_trading_environment():
         print(f"❌ SB3 environment check failed: {e}")
         traceback.print_exc()
         return
-    
-    # Step 5: Test stepping through the environment
-    print("\nStep 5: Testing environment interactions...")
-    try:
-        # Try 10 random actions
-        for i in range(200):
-            action =env.action_space.sample()
-            print(f"Step {i+1}: Taking action {action}")
-            
-            # Measure step time
-            start_time = time.time()
-            obs, reward, done, truncated, info =env.step(action)
-            step_time = time.time() - start_time
-            
-            #print(f"  Trade info: {info}")
-            print(f"  Reward: {reward}")
-            print(f"  Done: {done}")
-            print(f"  Truncated: {truncated}")
-            print(f"  Step time: {step_time:.6f} seconds")
-            
-            # Break if done
-            if done or truncated:
-                print("Environment episode completed.")
-                break
-        
-        print("✅ Environment stepping test completed successfully.")
-    except Exception as e:
-        print(f"❌ Error during environment stepping: {e}")
-        traceback.print_exc()
-        return
+  
       # Step 6: Test a full episode with timing
     print("\nStep 6: Testing full episode...")
     try:
@@ -214,4 +187,17 @@ def check_trading_environment():
     print("If you're still experiencing training freezes, try using minimal callbacks.")
 
 if __name__ == "__main__":
+    import line_profiler
+    
+    profile = line_profiler.LineProfiler()
+    # profile.add_function(check_trading_environment)
+    # profile.add_function(TradingEnv.reset)
+    #profile.add_function(TradingEnv.execute_trade)
+    #profile.add_function(TradingEnv.simulate_trade_outcome)
+    #profile.add_function(ObservationHandler.get_observation)
+    # profile.add_function(RewardCalculator.calculate_sharpe_reward)
+    # profile.add_function(RewardCalculator.calculate_sortino_reward)
+    # profile.run('check_trading_environment()')
+    #profile.print_stats()
+    
     check_trading_environment()

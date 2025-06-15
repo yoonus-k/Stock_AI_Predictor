@@ -21,7 +21,7 @@ class ActionHandler:
         """# Define the action space as MultiDiscrete
         self.action_space = MultiDiscrete([
             3,              # Action type: 0=HOLD, 1=BUY, 2=SELL
-            20,             # Position size: discretized (0=0.005, 1=0.01, ..., 19=0.1) (% from the account to risk)
+            20,             # Position size: discretized (0=0.001, 1=0.002, ..., 19=0.02) (% from the account to risk)
             10,             # Risk reward: discretized (0=0.5, 1=0.75, ..., 9=3.0)
             10              # Hold time: discretized (0=3h, 1=6h, 2=9h, 3=12h, 4=15h, 5=18h, 6=21h, 7=24h, 8=27h, 9=30h)
         ])
@@ -52,8 +52,8 @@ class ActionHandler:
         action_type = int(action[0])  # Already 0, 1, or 2
         
         # Map position size from discrete index to continuous value
-        # 0->0.005, 1->0.01, ..., 19->0.1
-        position_size = 0.005 + (action[1] * 0.005)
+        # 0->0.001, 1->0.002, ..., 19->0.02
+        position_size = 0.001 + (action[1] * 0.001)
         
         # Map risk reward from discrete index to continuous value
         # 0->0.5, 1->0.75, ..., 9->3.0
@@ -74,65 +74,6 @@ class ActionHandler:
         
         return action_type, position_size, risk_reward_multiplier, hold_time_hours
     
-    def adaptive_position_sizing(self, base_position_size: float, balance: float, 
-                               peak_balance: float, returns_history: List[float],
-                               atr_ratio: Optional[float] = None) -> float:
-        """
-        Adjust position size based on performance and drawdown
-        
-        Args:
-            base_position_size: Base position size to adjust
-            balance: Current account balance
-            peak_balance: Highest balance achieved
-            returns_history: List of recent returns
-            atr_ratio: Current ATR ratio as volatility measure (optional)
-            
-        Returns:
-            float: Adjusted position size (0.1-1.0)
-        """
-        # Start with base position size
-        adjusted_size = base_position_size
-        
-        # 1. Drawdown-based adjustment
-        drawdown = (balance / peak_balance) - 1
-        
-        # Reduce position size in drawdown
-        if drawdown < -0.02:  # 2% drawdown
-            adjusted_size *= 0.8  # 20% reduction
-        if drawdown < -0.05:  # 5% drawdown
-            adjusted_size *= 0.6  # Additional reduction (total: 52% reduction)
-        if drawdown < -0.08:  # 8% drawdown
-            adjusted_size *= 0.5  # Additional reduction (total: 76% reduction)
-            
-        # 2. Win/loss streak adjustment
-        recent_trades = returns_history[-5:] if len(returns_history) >= 5 else returns_history
-        if recent_trades:
-            recent_wins = sum(1 for r in recent_trades if r > 0)
-            recent_losses = sum(1 for r in recent_trades if r < 0)
-            
-            # Increase size on winning streak (with cap)
-            if recent_wins >= 3 and recent_wins > recent_losses:
-                win_ratio = recent_wins / len(recent_trades)
-                adjusted_size *= min(1.2, 1 + (win_ratio * 0.2))  # Max 20% increase
-                
-            # Decrease size on losing streak
-            elif recent_losses >= 3 and recent_losses > recent_wins:
-                loss_ratio = recent_losses / len(recent_trades)
-                adjusted_size *= max(0.5, 1 - (loss_ratio * 0.5))  # Max 50% decrease
-        
-        # 3. Volatility-based adjustment (if atr_ratio is available)
-        if atr_ratio is not None:
-            # Baseline ATR ratio (consider this "normal" volatility)
-            baseline_atr = 0.002  # Adjust based on your asset
-            
-            # Adjust position size inversely to volatility
-            vol_adjustment = baseline_atr / (atr_ratio + 1e-6)
-            vol_adjustment = np.clip(vol_adjustment, 0.5, 1.5)  # Limit adjustment range
-            
-            adjusted_size *= vol_adjustment
-        
-        # Ensure position size stays within allowed limits (0.1 to 1.0)
-        return np.clip(adjusted_size, 0.1, 1.0)
         
     def get_action_statistics(self) -> Dict[str, Any]:
         """
@@ -175,18 +116,20 @@ class ActionHandler:
         """
         # Default position size modifier (will be adjusted based on pattern match)
         position_size_modifier = 1.0
-        
+      
         # For long position (BUY)
         if action_type == 1:
             # If agent agrees with pattern - 100% position size
             if pattern_action == 1:
                 tp_price = entry_price * (1 + (abs(max_gain) * risk_reward_multiplier))
-                sl_price = entry_price * (1 - abs(max_drawdown) )
+                # the sl will be the max drawdown percentage + 50% buffer
+                sl_price = entry_price * (1 - abs(max_drawdown*1.5) )
                 position_size_modifier = 1.0  # Full position size for exact pattern match
             # If agent contradicts pattern - 50% position size
             elif pattern_action == 2:
                 tp_price = entry_price * (1 + (abs(max_drawdown) * risk_reward_multiplier))
-                sl_price = entry_price * (1 - abs(max_gain) )
+                # the sl will be the max drawdown percentage + 50% buffer
+                sl_price = entry_price * (1 - abs(max_gain*1.5) )
                 position_size_modifier = 0.5  # Half position size for contradicting pattern
             else:
                 # Default if pattern_action is neutral - 75% position size
@@ -199,12 +142,14 @@ class ActionHandler:
             # If agent agrees with pattern - 100% position size
             if pattern_action == 2:
                 tp_price = entry_price * (1 - (abs(max_gain) * risk_reward_multiplier))
-                sl_price = entry_price * (1 + abs(max_drawdown) )
+                # the sl will be the max drawdown percentage + 50% buffer
+                sl_price = entry_price * (1 + abs(max_drawdown*1.5) )
                 position_size_modifier = 1.0  # Full position size for exact pattern match
             # If agent contradicts pattern - 50% position size
             elif pattern_action == 1:
                 tp_price = entry_price * (1 - (abs(max_drawdown) * risk_reward_multiplier))
-                sl_price = entry_price * (1 + abs(max_gain))
+                # the sl will be the max drawdown percentage + 50% buffer
+                sl_price = entry_price * (1 + abs(max_gain*1.5))
                 position_size_modifier = 0.5  # Half position size for contradicting pattern
             else:
                 # Default if pattern_action is neutral - 75% position size

@@ -28,4 +28,5 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["RL", "Data", "Pattern", "Utils", "Experements", "Sentiment","Backtrader"]
+packages = ["RL","Interface", "Data", "Pattern", "Utils", "Experements",
+ "Sentiment","Backtesting", "Lib"]

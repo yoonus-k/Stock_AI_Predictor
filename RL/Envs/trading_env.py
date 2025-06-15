@@ -34,13 +34,18 @@ class TradingEnv(gym.Env):
             reward_type: Type of reward function to use
             normalize_observations: Whether to normalize observations
             normalization_range: Range for normalized observations
-            enable_adaptive_scaling: Whether to adapt scaling during training
             timeframe_id: Identifier for the timeframe (e.g., 5 for 1H , 6 for 4H, etc.)
             stock_id: Identifier for the stock (used with database connection)
             db_connection: Database connection for dynamic data retrieval
         """
         super(TradingEnv, self).__init__()
+        self.original_feutures = feutures # Store original features for reference
+        
+        # drop the config_id and the timeframe_id columns from the DataFrame
+        feutures = feutures.drop(columns=["config_id"])
+        feutures = feutures.drop(columns=["timeframe_id"])
         self.feutures = feutures
+        
         self.index = 0
         self.initial_balance = initial_balance
         self.balance = initial_balance
@@ -59,6 +64,11 @@ class TradingEnv(gym.Env):
 
         # Initialize trade tracking variables
         self.entry_price = 0
+        self.entry_prices = self.stock_data['close_price'].reindex(index=self.feutures.index).dropna()
+        # Pre-calculate numpy arrays for faster access
+        self.close_price_array = self.stock_data["close_price"]# Store close prices for trade simulation
+        self.timestamp_array = np.array(self.stock_data.index, dtype='datetime64[ns]')
+        
         self.tp_price = 0
         self.sl_price = 0
         self.trade_direction = 0  # 1=long, -1=short, 0=neutral
@@ -105,6 +115,7 @@ class TradingEnv(gym.Env):
         super().reset(seed=seed)
 
         observation = self._get_observation()
+        
         info = {}
 
         return observation, info
@@ -121,7 +132,7 @@ class TradingEnv(gym.Env):
         """
         # Get current data point
         current_data = self.feutures.iloc[self.index]
-
+        
         # Process action using action handler
         action_type, position_size, risk_reward_multiplier, hold_time_hours = (
             self.action_handler.process_action(action)
@@ -145,6 +156,7 @@ class TradingEnv(gym.Env):
         if action_type != 0:  # If not HOLD
             # Execute trade and get results
             trade_pnl_pct, trade_closed, trade_info = self.execute_trade(
+                current_data,
                 action_type,
                 position_size,
                 risk_reward_multiplier,
@@ -273,7 +285,7 @@ class TradingEnv(gym.Env):
         self.trade_direction = 0
 
         # Check for episode termination conditions
-        if self.balance < self.initial_balance * 0.8:  # 10% drawdown
+        if self.balance < self.initial_balance * 0.2:  # 80% drawdown
             done = True
             truncated = True
             reward -= 0.1  # Additional penalty
@@ -286,12 +298,16 @@ class TradingEnv(gym.Env):
             # Update observation handler with current metrics
             self.observation_handler.update_portfolio_metrics(
                 self.balance,
+                self.reward_calculator.drawdown,
                 self.reward_calculator.max_drawdown,
                 self.reward_calculator.winning_trades,
                 self.reward_calculator.trade_count,
                 self.action_handler.steps_without_action,
             )
             observation = self._get_observation()
+            
+            # if self.index == 9:
+            #     print("Observation:", observation)
 
         return observation, reward, done, truncated, info
 
@@ -302,6 +318,7 @@ class TradingEnv(gym.Env):
 
     def execute_trade(
         self,
+        current_data: pd.Series,
         action_type: int,
         position_size: float,
         risk_reward_multiplier: float,
@@ -323,13 +340,12 @@ class TradingEnv(gym.Env):
         """
         # Exit early if action is HOLD
         if action_type == 0:
-            return 0.0, False, {"trade_status": "hold"}  # Get current data point
-        current_data = self.feutures.iloc[self.index]
+            return 0.0, False, {"trade_status": "hold"}  
 
         # Get current timestamp from data , the date is the index of the DataFrame
         current_timestamp = self.feutures.index[self.index]
 
-        self.entry_price = self.stock_data.loc[current_timestamp]["close_price"]
+        self.entry_price = self.entry_prices.iloc[self.index]
 
         # Calculate TP, SL and position size modifier based on pattern match
         self.tp_price, self.sl_price, position_size_modifier = (
@@ -369,6 +385,7 @@ class TradingEnv(gym.Env):
                     trade_direction=self.trade_direction,
                 )
             )
+            
         # Calculate trade metrics
         trade_pnl_pct = adjusted_position_size * gain_risk_reward
 
@@ -401,124 +418,45 @@ class TradingEnv(gym.Env):
 
         return trade_pnl_pct, trade_closed, trade_info
 
-    def simulate_trade_outcome(
-        self,
-        current_timestamp: datetime,
-        entry_price: float,
-        tp_price: float,
-        sl_price: float,
-        hold_time_hours: int,
-        trade_direction: int,
-    ) -> Tuple[float, str, float, float]:
-        """
-        Simulate a trade outcome based on price data
-
-        Args:
-            entry_price: Entry price
-            tp_price: Take profit price
-            sl_price: Stop loss price
-            hold_time_hours: Maximum holding time in hours
-            trade_direction: 1=Long, -1=Short
-            timeframe_id: Timeframe identifier
-            price_data: Historical price data
-
-        Returns:
-            Tuple[float, str, float]: (exit_price, exit_reason, actual_hold_time,gain)
-        """
-        price_data = self.stock_data
-        if price_data.empty:
-            return entry_price, "no_data", 0
-
-        # Calculate end timestamp
+    def simulate_trade_outcome(self, current_timestamp, entry_price, tp_price, sl_price, hold_time_hours, trade_direction):
+        current_timestamp = pd.Timestamp(current_timestamp)
+        # Calculate end timestamp and get data indices
         end_timestamp = current_timestamp + timedelta(hours=float(hold_time_hours))
-        # filter the desired price data range
-        price_data = price_data[
-            (price_data.index >= current_timestamp)
-            & (price_data.index <= end_timestamp)
-        ]
+        
+        # Get price and timestamp slices
+        close_prices = self.close_price_array[current_timestamp:end_timestamp]
 
-        # Default values if no conditions met
-        exit_price = entry_price
-        exit_reason = "time"
-        actual_hold_time = hold_time_hours
-        gain_risk_reward = 0.0  # in RR
-
-        # Simulate trade outcome , whether it hits TP, SL or just times out
-        # first get the maximum and minimum prices during the trade duration
-
-        # get the close prices for the trade duration
-        close_prices = price_data["close_price"].values
-        max_price = np.max(close_prices)
-        min_price = np.min(close_prices)
-
-        # if the trade is long
-        if trade_direction == 1:
-            # Check if SL is hit
-            if min_price <= sl_price:
-                exit_price = sl_price
-                exit_reason = "sl"
-
-                sl_hits = price_data[
-                    price_data["close_price"] <= sl_price
-                ]  # Use <= instead of ==
-                if len(sl_hits) > 0:
-                    actual_hold_time = (
-                        sl_hits.index[0] - current_timestamp
-                    ).total_seconds() / 3600.0
-
-                gain_risk_reward = (exit_price - entry_price) / (entry_price - sl_price)
-            # Check if TP is hit
-            elif max_price >= tp_price:
-                exit_price = tp_price
-                exit_reason = "tp"
-
-                tp_hits = price_data[price_data["close_price"] >= tp_price]
-                if len(tp_hits) > 0:
-                    # Use the first occurrence of TP hit
-                    actual_hold_time = (
-                        tp_hits.index[0] - current_timestamp
-                    ).total_seconds() / 3600.0
-
-                gain_risk_reward = (exit_price - entry_price) / (entry_price - sl_price)
-            else:
-                # Trade times out
-                exit_price = close_prices[-1]
-                actual_hold_time = hold_time_hours
-                exit_reason = "time"
-                gain_risk_reward = (exit_price - entry_price) / (entry_price - sl_price)
-        else:  # Short trade
-            # Check if SL is hit
-            if max_price >= sl_price:
-                exit_price = sl_price
-                exit_reason = "sl"
-                
-                sl_hits = price_data[
-                    price_data["close_price"] >= sl_price
-                ]
-                if len(sl_hits) > 0:
-                    # Use the first occurrence of SL hit
-                    actual_hold_time = (
-                        sl_hits.index[0] - current_timestamp
-                    ).total_seconds() / 3600.0
-    
-                gain_risk_reward = (exit_price - entry_price) / (entry_price - sl_price)
-            # Check if TP is hit
-            elif min_price <= tp_price:
-                exit_price = tp_price
-                exit_reason = "tp"
-                
-                tp_hits = price_data[price_data["close_price"] <= tp_price]
-                if len(tp_hits) > 0:
-                    # Use the first occurrence of TP hit
-                    actual_hold_time = (
-                        tp_hits.index[0] - current_timestamp
-                    ).total_seconds() / 3600.0
-                gain_risk_reward = (exit_price - entry_price) / (entry_price - sl_price)
-            else:
-                # Trade times out
-                exit_price = close_prices[-1]
-                actual_hold_time = hold_time_hours
-                exit_reason = "time"
-                gain_risk_reward = (exit_price - entry_price) / (entry_price - sl_price)
-
+        # Use vectorized operations to find TP/SL hits
+        if trade_direction == 1:  # Long
+            sl_hit_indices = np.where(close_prices <= sl_price)[0]
+            tp_hit_indices = np.where(close_prices >= tp_price)[0]
+        else:  # Short
+            sl_hit_indices = np.where(close_prices >= sl_price)[0]
+            tp_hit_indices = np.where(close_prices <= tp_price)[0]
+        
+        # Determine outcome
+        exit_idx = -1
+        if len(sl_hit_indices) > 0 and (len(tp_hit_indices) == 0 or sl_hit_indices[0] < tp_hit_indices[0]):
+            exit_price = sl_price
+            exit_reason = "sl"
+            exit_idx = sl_hit_indices[0]
+        elif len(tp_hit_indices) > 0:
+            exit_price = tp_price
+            exit_reason = "tp"
+            exit_idx = tp_hit_indices[0]
+        else:
+            exit_price = close_prices[-1]
+            exit_reason = "time"
+            exit_idx = len(close_prices) - 1
+        
+        # Calculate hold time
+        if exit_reason != "time":
+            exit_timestamp = current_timestamp + timedelta(hours=float(exit_idx ))
+            actual_hold_time = (exit_timestamp - current_timestamp).total_seconds() / 3600.0
+        else:
+            actual_hold_time = hold_time_hours
+        
+        # Calculate gain in risk-reward terms
+        gain_risk_reward = (exit_price - entry_price) / (entry_price - sl_price)
+        
         return exit_price, exit_reason, actual_hold_time, gain_risk_reward

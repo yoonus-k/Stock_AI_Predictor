@@ -56,7 +56,7 @@ class RLPolicy:
             raise RuntimeError("RL model not loaded or trained.")
 
         # Get action from model (now returns dict with action_type and position_size)
-        action_dict = self.model.predict(state, deterministic=True)[0]
+        action_dict = self.model.predict(state, deterministic=False)[0]
         
         return {
             'action_type': self.action_types[action_dict['action_type']],

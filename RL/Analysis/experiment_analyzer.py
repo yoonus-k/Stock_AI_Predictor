@@ -19,7 +19,7 @@ project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(project_root))
 
 # Custom imports
-from RL.Utils.mlflow_manager import MLflowManager
+from RL.Mlflow.mlflow_manager import MLflowManager
 
 
 class ExperimentAnalyzer:

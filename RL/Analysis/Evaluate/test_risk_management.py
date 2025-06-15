@@ -103,7 +103,7 @@ def test_risk_management(model_paths,save_path, data=None, stress_scenarios=['no
                 drawdowns = []
                 
                 while not done:
-                    action, _ = model.predict(obs, deterministic=True)
+                    action, _ = model.predict(obs, deterministic=False)
                     obs, reward, done, truncated, info = env.step(action)
                     
                     rewards.append(reward)

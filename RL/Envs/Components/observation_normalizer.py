@@ -16,20 +16,26 @@ class ObservationNormalizer:
     """
     
     def __init__(self, 
-                 enable_adaptive_scaling: bool = False,
                  output_range: Tuple[float, float] = (-1.0, 1.0),
                  clip_outliers: bool = True):
         """
         Initialize the normalizer with default scaling ranges for each feature type.
         
         Args:
-            enable_adaptive_scaling: If True, track feature ranges during runtime and adjust normalization
             output_range: The target range for normalized features, default [-1, 1]
             clip_outliers: Whether to clip values outside expected ranges
         """
-        self.enable_adaptive_scaling = enable_adaptive_scaling
+        
         self.output_range = output_range
         self.clip_outliers = clip_outliers        # Define feature indices for each category
+        
+        self._min_array = None
+        self._max_array = None
+        self._range_array = None
+        self._out_min = None
+        self._out_max = None
+        self._out_range = None
+        
         # These must match the order in the separated feature structure:
         # Market features (24): Pattern(7) + Technical(3) + Sentiment(1) + COT(6) + Time(7)
         # Portfolio features (6): balance_ratio, portfolio_max_drawdown, win_rate, avg_pnl_per_hour, decisive_exits, recovery_factor
@@ -46,13 +52,14 @@ class ObservationNormalizer:
         # Format: (min_value, max_value, center_value)
         # Center value is used for scaling features that should be centered around a specific value
         self._init_feature_ranges()
-          # For adaptive scaling (optional)
-        self.observed_min = {}
-        self.observed_max = {}
+        self._setup_vectorized_normalization()
+      
         
     def _init_feature_ranges(self):
         """Initialize default scaling ranges for all features."""
+        
         self.feature_ranges = {
+            
             # Pattern Features - Based on actual DB values with 20% margin
             0: (0, 1.0, 0.5),        # probability [DB: 0.47-1.0]
             1: (0.0, 2.0, 1.0),          # action [DB: 1-2] (discrete values)
@@ -66,7 +73,8 @@ class ObservationNormalizer:
             7: (0, 100, 50.0),       # rsi [DB: 20.53-80.90]
             8: (0, 100, 50),         # atr [DB: 2.43-13.63]
             9: (0.001, 0.01, 0.0055),   # atr_ratio [DB: 0.0012-0.0057]
-              # Sentiment Features  
+            
+            # Sentiment Features  
             10: (-1.0, 1.0, 0.0),        # unified_sentiment [DB: -0.63-0.79]
             
             # COT Data - Based on actual column names used in observations
@@ -75,7 +83,9 @@ class ObservationNormalizer:
             13: (-1000000, 1000000, 0.0),        # change_noncommercial_long [DB: -29820-49200]
             14: (-1000000, 1000000, 0.0),        # change_noncommercial_short [DB: -21924-19452]
             15: (-1000000, 1000000, 0.0),        # change_noncommercial_delta
-            16: (-1000000, 1000000, 0.0),        # change_nonreportable_delta            # Time Features - Based on DB values, most already normalized
+            16: (-1000000, 1000000, 0.0),        # change_nonreportable_delta            
+            
+            # Time Features - Based on DB values, most already normalized
             17: (-1.0, 1.0, 0.0),        # hour_sin [DB: -1.0-1.0]
             18: (-1.0, 1.0, 0.0),        # hour_cos [DB: -1.0-0.97] 
             19: (-1.0, 1.0, 0.0),        # day_sin [DB: -0.43-0.97]
@@ -83,45 +93,37 @@ class ObservationNormalizer:
             21: (0.0, 1.0, 0.0),         # asian_session [DB: 0-1]
             22: (0.0, 1.0, 0.0),         # london_session [DB: 0-1]
             23: (0.0, 1.0, 0.0),         # ny_session [DB: 0-1]
-                # Portfolio Features - Updated feature names and ranges
+            
+            # Portfolio Features - Updated feature names and ranges
             24: (0.0, 10.0, 1.0),         # balance_ratio [0, +inf)
-            25: (-1.0, 0.0, 0.0),         # portfolio_max_drawdown [-1, 0] (negative drawdown values)
+            25: (-1.0, 0.0, 0.0),         # portfolio_drawdown [-1, 0] (negative drawdown values)
             26: (0.0, 1.0, 0.5),          # win_rate [0, 1]
             27: (-0.1, 0.1, 0.0),         # avg_pnl_per_hour (P&L per hour efficiency)
             28: (0.0, 1.0, 0.5),          # decisive_exits (ratio of TP/SL vs timeout)
-            29: (0.0, 10.0, 1.0),         # recovery_factor (gains/drawdown ratio)
+            29: (-1, 1000.0, 1.0),         # recovery_factor (gains/drawdown ratio)
+            
         }
-    
-    def normalize_feature(self, value: float, feature_idx: int) -> float:
-        """
-        Normalize a single feature value based on its index and expected range.
         
-        Args:
-            value: Raw feature value
-            feature_idx: Index of the feature in the observation vector
-            
-        Returns:
-            Normalized feature value in the output range
-        """
-        if feature_idx not in self.feature_ranges:
-            return value  # Return unchanged if we don't have normalization info
-            
-        min_val, max_val, _ = self._get_feature_range(feature_idx)
+    def _setup_vectorized_normalization(self):
+        """Pre-compute arrays for faster normalization"""
+        max_features = max(self.feature_ranges.keys()) + 1
         
-        # Update observed ranges if adaptive scaling is enabled
-        if self.enable_adaptive_scaling:
-            self._update_observed_range(feature_idx, value)
+        # Pre-compute min and max arrays
+        self._min_array = np.array([
+            self.feature_ranges.get(i, (0, 1, 0))[0] 
+            for i in range(max_features)
+        ])
         
-        # Clip outliers if requested
-        if self.clip_outliers:
-            value = np.clip(value, min_val, max_val)
-            
-        # Normalize to [0, 1] first
-        norm_val = (value - min_val) / (max_val - min_val + 1e-8)
+        self._max_array = np.array([
+            self.feature_ranges.get(i, (0, 1, 0))[1] 
+            for i in range(max_features)
+        ])
         
-        # Then scale to output range
-        out_min, out_max = self.output_range
-        return norm_val * (out_max - out_min) + out_min
+        self._range_array = self._max_array - self._min_array 
+        
+        # Output range values
+        self._out_min, self._out_max = self.output_range
+        self._out_range = self._out_max - self._out_min
     
     def normalize_observation(self, observation: np.ndarray) -> np.ndarray:
         """
@@ -133,129 +135,22 @@ class ObservationNormalizer:
         Returns:
             Normalized observation vector
         """
-        if len(observation) != len(self.feature_ranges):
-            # Warning: observation length doesn't match expected features
-            # This could happen if the environment changes or feature extraction changes
-            print(f"Warning: Observation length {len(observation)} doesn't match expected features {len(self.feature_ranges)}")
-            
-        normalized = np.zeros_like(observation)
-        for i, val in enumerate(observation):
-            if i < len(self.feature_ranges):
-                normalized[i] = self.normalize_feature(val, i)
-            else:
-                normalized[i] = val  # Keep as is if we don't have info
-                
-        return normalized
-    
-    def normalize_by_category(self, observation: np.ndarray, category: str) -> np.ndarray:
-        """
-        Normalize features of a specific category.
         
-        Args:
-            observation: Raw observation vector
-            category: Category name ('pattern', 'technical', etc.)
-            
-        Returns:
-            Observation with normalized features for the specified category
-        """
-        if category not in self.feature_indices:
-            return observation  # Return unchanged if category not found
-            
+        # Create output array
         normalized = observation.copy()
-        for idx in self.feature_indices[category]:
-            if idx < len(observation):
-                normalized[idx] = self.normalize_feature(observation[idx], idx)
-                
+        
+        # Apply clipping if needed
+        if self.clip_outliers:
+            observation = np.clip(observation, self._min_array, self._max_array)
+        
+        # Vectorized normalization in one step
+        normalized= ((observation - self._min_array) / self._range_array) * self._out_range + self._out_min # (1)
+        
+        # insure float32 type for compatibility
+        normalized = normalized.astype(np.float32)
+        
         return normalized
-    
-    def denormalize_feature(self, value: float, feature_idx: int) -> float:
-        """
-        Convert a normalized value back to its original scale.
-        
-        Args:
-            value: Normalized feature value
-            feature_idx: Feature index
-            
-        Returns:
-            Denormalized value
-        """
-        if feature_idx not in self.feature_ranges:
-            return value  # Return unchanged if we don't have normalization info
-            
-        min_val, max_val, _ = self._get_feature_range(feature_idx)
-        
-        # First scale from output range to [0, 1]
-        out_min, out_max = self.output_range
-        norm_val = (value - out_min) / (out_max - out_min + 1e-8)
-        
-        # Then back to original range
-        return norm_val * (max_val - min_val) + min_val
-    
-    def denormalize_observation(self, normalized_observation: np.ndarray) -> np.ndarray:
-        """
-        Convert a normalized observation vector back to its original scale.
-        
-        Args:
-            normalized_observation: Normalized observation vector
-            
-        Returns:
-            Denormalized observation vector
-        """
-        denormalized = np.zeros_like(normalized_observation)
-        for i, val in enumerate(normalized_observation):
-            if i < len(self.feature_ranges):
-                denormalized[i] = self.denormalize_feature(val, i)
-            else:
-                denormalized[i] = val  # Keep as is if we don't have info
-                
-        return denormalized
-    
-    def _get_feature_range(self, feature_idx: int) -> Tuple[float, float, float]:
-        """
-        Get the min, max and center values for a feature.
-        Uses adaptive ranges if enabled and observed.
-        
-        Args:
-            feature_idx: Feature index
-            
-        Returns:
-            Tuple of (min_value, max_value, center_value)
-        """
-        default_range = self.feature_ranges[feature_idx]
-        
-        if not self.enable_adaptive_scaling:
-            return default_range
-            
-        # If adaptive scaling is enabled, use observed ranges when available
-        min_val, max_val, center = default_range
-        
-        if feature_idx in self.observed_min:
-            min_val = min(min_val, self.observed_min[feature_idx])
-            
-        if feature_idx in self.observed_max:
-            max_val = max(max_val, self.observed_max[feature_idx])
-            
-        return (min_val, max_val, center)
-    
-    def _update_observed_range(self, feature_idx: int, value: float) -> None:
-        """
-        Update the observed min/max values for a feature.
-        
-        Args:
-            feature_idx: Feature index
-            value: Observed value
-        """
-        # Skip NaN or inf values
-        if not np.isfinite(value):
-            return
-            
-        # Update min
-        if feature_idx not in self.observed_min or value < self.observed_min[feature_idx]:
-            self.observed_min[feature_idx] = value
-            
-        # Update max
-        if feature_idx not in self.observed_max or value > self.observed_max[feature_idx]:
-            self.observed_max[feature_idx] = value
+
     
     def get_normalized_observation_space(self):
         """
@@ -283,25 +178,5 @@ class ObservationNormalizer:
         )
     
     def reset(self):
-        """Reset adaptive scaling if it's enabled."""
-        if self.enable_adaptive_scaling:
-            self.observed_min = {}
-            self.observed_max = {}
+        pass
             
-    def update_feature_range(self, feature_idx: int, min_val: float, max_val: float, center_val: Optional[float] = None):
-        """
-        Manually update the normalization range for a specific feature.
-        
-        Args:
-            feature_idx: Feature index
-            min_val: Minimum value
-            max_val: Maximum value
-            center_val: Center value (optional, defaults to current center or (min+max)/2)
-        """
-        if feature_idx not in self.feature_ranges:
-            return
-            
-        _, _, current_center = self.feature_ranges[feature_idx]
-        center = center_val if center_val is not None else current_center
-        
-        self.feature_ranges[feature_idx] = (min_val, max_val, center)

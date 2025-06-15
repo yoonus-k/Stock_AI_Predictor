@@ -256,7 +256,7 @@ class PortfolioTracker:
         return metrics
 
 
-def run_model_on_data(model, env, data=None, max_steps=None, deterministic=True):
+def run_model_on_data(model, env, data=None, max_steps=None, deterministic=False):
     """
     Run model on environment and collect trading data
 
@@ -275,7 +275,7 @@ def run_model_on_data(model, env, data=None, max_steps=None, deterministic=True)
         if data is None:
             raise ValueError("Either env or data must be provided")
         env = TradingEnv(
-            data, normalize_observations=True, enable_adaptive_scaling=False
+            data, normalize_observations=True
         )
 
     # Initialize tracker
@@ -675,12 +675,12 @@ def analyze_trading_strategy(model_path, data=None, output_dir=None, episodes=1)
     print(f"Using {len(data)} records for evaluation")
 
     # Create evaluation environment
-    env = TradingEnv(data, normalize_observations=True, enable_adaptive_scaling=False)
+    env = TradingEnv(data, normalize_observations=True)
 
     # Run model on environment
     print("\nRunning model on evaluation data...")
     tracker, actions_data = run_model_on_data(
-        model, env, max_steps=1000, deterministic=True
+        model, env, max_steps=1000, deterministic=False
     )
 
     # Analyze portfolio performance

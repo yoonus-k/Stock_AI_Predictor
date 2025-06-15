@@ -138,7 +138,7 @@ class TradingRLModel:
         observation = self._convert_state_to_observation(state)
         
         # Get action from model
-        action, _ = self.model.predict(observation, deterministic=True)
+        action, _ = self.model.predict(observation, deterministic=False)
         
         # Interpret action
         action_type = int(action[0])

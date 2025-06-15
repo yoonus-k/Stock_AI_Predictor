@@ -33,6 +33,7 @@ class RewardCalculator:
         self.losing_trades = 0
         self.win_amount = 0
         self.loss_amount = 0
+        self.drawdown = 0
         self.max_drawdown = 0
     
     def update_metrics(self, balance: float, trade_pnl_pct: float):
@@ -48,6 +49,9 @@ class RewardCalculator:
         
         # Update peak balance for drawdown calculation
         self.peak_balance = max(self.peak_balance, balance)
+        
+        # update the drawdown
+        self.drawdown = (balance / self.peak_balance) - 1
         
         # Update trade metrics
         if trade_pnl_pct > 0:
