@@ -1082,8 +1082,7 @@ class _Broker:
             # precompute true size in units, accounting for margin and spread/commissions
             size = order.size
             if -1 < size < 1:
-                size = copysign(int((self.margin_available * self._leverage * abs(size))
-                                    // adjusted_price_plus_commission), size)
+                size = copysign(int((self.margin_available * self._leverage * abs(size))// adjusted_price_plus_commission), size)
                 # Not enough cash/margin even for a single unit
                 if not size:
                     warnings.warn(

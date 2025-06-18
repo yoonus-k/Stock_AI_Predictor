@@ -17,7 +17,7 @@ class ObservationNormalizer:
     
     def __init__(self, 
                  output_range: Tuple[float, float] = (-1.0, 1.0),
-                 clip_outliers: bool = True):
+                 clip_outliers: bool = False):
         """
         Initialize the normalizer with default scaling ranges for each feature type.
         
@@ -139,10 +139,6 @@ class ObservationNormalizer:
         # Create output array
         normalized = observation.copy()
         
-        # Apply clipping if needed
-        if self.clip_outliers:
-            observation = np.clip(observation, self._min_array, self._max_array)
-        
         # Vectorized normalization in one step
         normalized= ((observation - self._min_array) / self._range_array) * self._out_range + self._out_min # (1)
         
@@ -166,8 +162,8 @@ class ObservationNormalizer:
         low_val, high_val = self.output_range
         
         # Use slightly expanded range to allow for numerical precision issues
-        low_val -= 0.01
-        high_val += 0.01
+        # low_val -= 0.01
+        # high_val += 0.01
         
         # Create observation space with normalized values
         return spaces.Box(
