@@ -9,7 +9,8 @@ from datetime import datetime, timedelta
 from Data.Database.db import Database
 
 
-def load_data_from_db(db_path="RL/Data/Storage/samples.db", table_name="dataset", timeframe_id=5):
+def load_data_from_db(db_path="RL/Data/Storage/samples.db", table_name="dataset", timeframe_id=5 ,
+                      start_date='2024-01-01', end_date='2025-01-01'):
     """
     Loads data from a SQLite database into a pandas DataFrame and applies preprocessing.
     
@@ -25,7 +26,7 @@ def load_data_from_db(db_path="RL/Data/Storage/samples.db", table_name="dataset"
         conn = sqlite3.connect(db_path)
         
         # Read the data
-        df = pd.read_sql_query(f"SELECT * FROM {table_name} where timeframe_id = {timeframe_id}", conn)
+        df = pd.read_sql_query(f"SELECT * FROM {table_name} where timeframe_id = {timeframe_id} ", conn)
         conn.close()
         
         # Ensure datetime column exists and is proper datetime
@@ -41,6 +42,5 @@ def load_data_from_db(db_path="RL/Data/Storage/samples.db", table_name="dataset"
 if __name__ == "__main__":
     # Example usage
     training_data = load_data_from_db()
-    data_point = training_data.iloc[0]
-    print(training_data.head(1))
-
+    data_point = training_data
+    print(training_data.head())

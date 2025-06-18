@@ -672,7 +672,7 @@ if __name__ == "__main__":
     if args.check_env:
         try:
             print("\nRunning environment compatibility check...")
-            from RL.Envs.Utils.check_environment import check_trading_environment
+            from RL.Envs.Utils.env_visualization import check_trading_environment
             check_trading_environment()
             proceed = input("\nDo you want to proceed with training? (y/n): ")
             if proceed.lower() != 'y':

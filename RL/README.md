@@ -9,11 +9,47 @@ This module implements an advanced reinforcement learning (RL) system designed f
 - **Drawdown Protection**: Special mechanisms to protect capital during adverse market conditions
 - **Performance Metrics**: Comprehensive tracking of trading performance beyond simple P&L
 
+## Trading Environment Versions
+
+### Basic Environment (`trading_env.py`)
+
+This is the original trading environment that simulates simplified trading with:
+- Single position at a time
+- Immediate trade execution and outcomes
+- Basic portfolio tracking
+
+### Enhanced Environment V2 (`trading_env_v2.py`) 
+
+The enhanced V2 environment provides a more realistic trading simulation with:
+- **Multiple Concurrent Positions**: Support for up to 10 active trades simultaneously
+- **Persistent Positions**: Positions remain open across multiple timesteps
+- **Dynamic Position Management**: TP/SL/time exit conditions checked on each step
+- **Realistic Portfolio Tracking**: Cash balance and position equity tracked separately
+- **Unrealized PnL**: Dynamic calculation of unrealized PnL for open positions
+- **Enhanced Reward Function**: Portfolio-focused reward calculation
+- **Vectorized Operations**: Optimized for performance using NumPy arrays
+
+For detailed documentation, see [`docs/trading_env_v2.md`](docs/trading_env_v2.md).
+
 ## System Components
 
-### Environment (`Envs/trading_env.py`)
+### Environment (`Envs/trading_env.py`, `Envs/trading_env_v2.py`)
 
-The trading environment simulates a financial market where the RL agent can:
+The system offers two trading environment implementations:
+
+#### Basic Environment (`trading_env.py`)
+- Single position at a time
+- Immediate trade execution and outcomes
+- Simplified portfolio tracking
+
+#### Enhanced Environment (`trading_env_v2.py`)
+- Multiple concurrent positions (up to 10 active trades)
+- Persistent positions across multiple timesteps
+- Dynamic tracking of equity and unrealized PnL
+- Vectorized operations for performance
+- Realistic portfolio management
+
+Both environments allow the RL agent to:
 - Observe market conditions through various features
 - Take actions (buy, sell, or hold with varying position sizes and risk parameters)
 - Receive risk-adjusted rewards based on trade outcomes and overall portfolio performance
