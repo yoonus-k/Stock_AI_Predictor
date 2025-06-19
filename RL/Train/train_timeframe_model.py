@@ -24,6 +24,7 @@ sys.path.append(str(project_root))
 
 # Stable Baselines imports
 from stable_baselines3 import PPO
+from stable_baselines3 import DQN, A2C, SAC, TD3
 from stable_baselines3.common.callbacks import CallbackList
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.logger import configure
@@ -73,12 +74,12 @@ def train_timeframe_model(
     # Default configuration
     default_config = {
         "timesteps": 100000,
-        "eval_freq": 10000,
+        "eval_freq": 20000,
         "learning_rate": 3e-4,
-        "batch_size": 256,
-        "n_steps": 512,
+        "batch_size": 64,
+        "n_steps": 256,
         "n_epochs": 10,
-        "ent_coef": 0.5,
+        "ent_coef": 0.1,
         "reward_type": "combined",
         "normalize_observations": True,
         "gamma": 0.99,
@@ -88,8 +89,8 @@ def train_timeframe_model(
         "normalize_advantage": True,
         "vf_coef": 0.5,
         "max_grad_norm": 0.5,
-        "use_sde": True,
-        "sde_sample_freq": 8,  # Resample noise every 8 steps (tune this)
+        "use_sde": False,
+        "sde_sample_freq": -1,  # Resample noise every 8 steps (tune this)
     }
 
     timeframe_id_map = {
@@ -112,7 +113,10 @@ def train_timeframe_model(
             config[key] = value
       # Track enhancement metrics
     enhancement_metrics = {}
-    base_model_run_id = None    # Handle auto-find model option or when "latest" is specified
+    base_model_run_id = None    
+    model_path = None
+    
+    # Handle auto-find model option or when "latest" is specified
     if auto_find_model and enhance_model_version is None or enhance_model_version in ["latest", "best"]:
         # Initialize MLflow manager
         temp_mlflow_manager = MLflowManager(
@@ -232,7 +236,7 @@ def train_timeframe_model(
     }
     
     # Add enhancement-specific tags
-    if model_path:
+    if model_path is not None:
         run_tags.update({
             "enhancement_type": enhancement_type,
             "base_model_path": model_path
@@ -290,10 +294,11 @@ def train_timeframe_model(
             timeframe_id=timeframe_id ,
             stock_id=stock_id,
             start_date=start_date,
-            end_date=end_date        )
+            end_date=end_date        
+            )
         
         # Create evaluation environment
-        eval_env_base = TradingEnv(
+        eval_env = TradingEnv(
             eval_data,
             normalize_observations=config["normalize_observations"],
             reward_type=config["reward_type"],
@@ -302,7 +307,7 @@ def train_timeframe_model(
             start_date=start_date,
             end_date=end_date
         )
-        eval_env = Monitor(eval_env_base)
+
         
         # Either load existing model or create new one
         if model_path and model_path.startswith("runs:"):
@@ -608,18 +613,18 @@ if __name__ == "__main__":
     parser.add_argument("--timeframe", type=str, default="1H", 
                        choices=["D", "4H", "1H", "30M", "15M", "5M", "1M"],
                        help="Timeframe for the model")
-    parser.add_argument("--timesteps", type=int, default=100000,
+    parser.add_argument("--timesteps", type=int, default=200000,
                         help="Number of training timesteps")
-    parser.add_argument("--experiment", type=str, default="stock_trading_rl",
+    parser.add_argument("--experiment", type=str, default="stock_trading_rl_new_env",
                         help="MLflow experiment name")
-    parser.add_argument("--enhance", type=str, default="best",
+    parser.add_argument("--enhance", type=str, default="latest",
                         help="Path to existing model to enhance, 'latest' to find latest model, or 'best' to find best model")
     parser.add_argument("--enhance-metric", type=str, default="evaluation/best_mean_reward",
                         help="Metric to use for finding the best model (only used when --enhance=best)")
     parser.add_argument("--enhance-type", type=str, default="continued",
                         choices=["continued", "replay", "curriculum", "adaptive"],
                         help="Type of enhancement to apply")
-    parser.add_argument("---model-type", type=str, default="enhanced",
+    parser.add_argument("---model-type", type=str, default="continued",
                         help="Type of model to enhance (e.g., 'base', 'continued', etc.)")
 
     parser.add_argument("--save-path", type=str,
@@ -634,8 +639,8 @@ if __name__ == "__main__":
     # Prepare configs
     config = {
         "timesteps": args.timesteps,
-        "eval_freq": 10000,
-        "reward_type": "sharpe"
+        "eval_freq": 20000,
+        "reward_type": "combined",
     }
       # Run training
     try:

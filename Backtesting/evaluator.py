@@ -202,7 +202,7 @@ class BacktestingPyEvaluator:
             # save a CSV file with the trades
             # trades.to_csv(f"trades_{stock_id}_{timeframe}.csv", index=False)
             #print(trades.head(10))  # Print first few trades
-            equity_curve = stats['_equity_curve']
+            #equity_curve = stats['_equity_curve']
             #print(equity_curve.head())  # Print first few rows of equity curve
 
             # print(stats)
@@ -241,7 +241,7 @@ class BacktestingPyEvaluator:
             
             # add the exit type counts to stats
             stats['_exit_reasons_counts'] = strategy.exit_reasons_counts
-          
+            #print(stats['_model_actions'].head(10))  # Print first few model actions
             all_metrics = self.metrics_extractor.extract_all_metrics(stats)
             
             # Add basic execution info

@@ -84,7 +84,7 @@ class RLTradingStrategy(Strategy):
             
         self.current_observation = None  # Current observation for RL model
             
-        self.position_size_devider =5   # Position size divisor for fixed sizing
+        self.position_size_devider =1   # Position size divisor for fixed sizing
         
         # Minimal position tracking (just to handle custom logic not in backtesting.py)
         # DEPRECATED: Using self.trades instead - keeping for backward compatibility during migration
@@ -465,7 +465,7 @@ class RLTradingStrategy(Strategy):
         risk_pct = total_risk / current_equity if current_equity > 0 else 0
         
         if risk_pct > 0.10:  # 10% max portfolio risk
-            logger.warning(f"⚠️ Maximum portfolio risk exceeded: {risk_pct:.2%}")
+            #logger.warning(f"⚠️ Maximum portfolio risk exceeded: {risk_pct:.2%}")
             self._close_all_positions("RISK_LIMIT")
             
     def _close_all_positions(self, reason: str):

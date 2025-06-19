@@ -19,7 +19,7 @@ from datetime import datetime
 # Import environment modules
 from RL.Data.Utils.loader import load_data_from_db
 from RL.Envs.trading_env import TradingEnv
-from RL.Envs.trading_env_v2 import TradingEnvV2
+from RL.Envs.trading_env import TradingEnvV2
 
 
 

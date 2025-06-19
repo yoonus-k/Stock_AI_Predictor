@@ -5,7 +5,7 @@ Test script for the enhanced visualization function
 import os
 import numpy as np
 import pandas as pd
-from RL.Envs.trading_env_v2 import TradingEnvV2
+from RL.Envs.trading_env import TradingEnvV2
 from RL.Envs.Utils.env_visualization import visualize_env_metrics
 from RL.Data.Utils.loader import load_data_from_db
 

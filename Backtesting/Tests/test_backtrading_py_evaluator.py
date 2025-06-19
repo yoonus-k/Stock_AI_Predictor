@@ -24,12 +24,15 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 # Add project root to path
 project_root = Path(__file__).resolve().parent
 sys.path.append(str(project_root))
-
+from RL.Data.Utils.loader import load_data_from_db
 # Import required modules
 from stable_baselines3 import PPO
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.evaluation import evaluate_policy
 from RL.Envs.trading_env import TradingEnv
 from RL.Data.Utils.loader import load_data_from_db
 from Backtesting.evaluator import BacktestingPyEvaluator
+
 
 
 def load_latest_model_from_mlflow(timeframe="1H"):
@@ -94,7 +97,7 @@ def load_latest_model_from_mlflow(timeframe="1H"):
                 
                 # Priority order for model selection
                 model_priorities = [
-                    f"models/{timeframe}/best_model_{timeframe}_10000.zip",
+                    f"models/{timeframe}/best_model_{timeframe}_90000.zip",
                     f"models/{timeframe}/{timeframe}_model.zip",
                     f"models/{timeframe}/final_model_{timeframe}"
                 ]
@@ -186,7 +189,7 @@ def test_portfolio_evaluator():
             enable_short=True,
             enable_hedging=True,
             position_sizing='fixed',
-            verbose=True,
+            verbose=False,
         )
         print("✅ Portfolio evaluator initialized successfully")
         
@@ -202,11 +205,11 @@ def test_portfolio_evaluator():
         start_time = datetime.now()
         
         # Run the portfolio evaluation
-        metrics = portfolio_evaluator.evaluate_portfolio(
+        metrics , stats = portfolio_evaluator.evaluate_portfolio(
             rl_model=model,
             timeframe='1H'
         )
-        
+
         # print metrics in table format
         if metrics is None:
             print("❌ No metrics returned from evaluation")
@@ -227,11 +230,79 @@ def test_portfolio_evaluator():
         print(f"❌ Error during portfolio evaluation: {e}")
         traceback.print_exc()
         return False
+    
+def evaluate_model_performance():
+    """
+    Evaluate the performance of the trained model in the trading environment.
+    
+    Args:
+        model: The trained RL model
+        env: The trading environment
+    Returns:
+        dict: Performance metrics including total return, Sharpe ratio, and max drawdown
+    """
+        # Step 1: Load the trained model
+    print("\n1. Loading trained RL model...")
+    try:
+        # First try to load from MLflow
+        model_path, run_id = load_latest_model_from_mlflow("1H")
+        
+        if model_path is None:
+            print("  ❌ Could not load model from MLflow, using placeholder")
+            model_path = "model_placeholder"  # This will be handled later
+            run_id = None
+        if run_id:
+            print(f"  ✅ Model loaded from MLflow run {run_id}")
+        else:
+            print(f"  ✅ Model loaded from path")
+            
+        # create the trading environment
+        print("\n2. Creating trading environment...")
+        data = load_data_from_db()
+        if data.empty:
+            print("❌ Failed to load data from database.")
+            return False
+        
+        print(f"✅ Loaded {len(data)} rows from database.")
+        
+        # Create environment
+        print("\nCreating environment...")
+        env = TradingEnv(
+            features=data,
+            initial_balance=100000,
+            reward_type="combined",
+            normalize_observations=True,
+            commission_rate=0.001,
+            enable_short=True,
+            max_positions=5,
+            verbose=False
+        )
+        eval_env = Monitor(env)
+            
+        model = PPO.load(model_path, env=None)
+        mean_reward, std_reward = evaluate_policy(
+        model, 
+        eval_env,
+        n_eval_episodes=1,
+        deterministic=True,
+        )
+        if mean_reward:
+            print(f"Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
+            return True
+        else:
+            print("❌ No mean reward returned from evaluation")
+            return False
+        
+    except Exception as e:
+        print(f"❌ Error loading model: {e}")
+        traceback.print_exc()
+        return False
 
 def main():
     """Main execution function"""
     try:
         success = test_portfolio_evaluator()
+        #success =evaluate_model_performance()
         if success:
             print("\n🚀 Test completed successfully!")
         else:

@@ -115,5 +115,7 @@ class ObservationHandler:
         if self.normalize_observations:
             observation = self.normalizer.normalize_observation(observation)
             
+        #print(f"Observation shape: {np.array(observation).shape}")
+            
         return observation
    

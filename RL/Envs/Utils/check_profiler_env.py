@@ -9,7 +9,7 @@ sys.path.append(str(project_root))
 import numpy as np
 import pandas as pd
 from RL.Data.Utils.loader import load_data_from_db
-from RL.Envs.trading_env_v2 import TradingEnvV2
+from RL.Envs.trading_env import TradingEnv
 from RL.Envs.Components.rewards import RewardCalculator
 from RL.Envs.Components.observations import ObservationHandler
 from RL.Envs.Components.observation_normalizer import ObservationNormalizer
@@ -33,7 +33,7 @@ def check_env_with_data():
     
     # Create environment
     print("\nCreating environment...")
-    env = TradingEnvV2(
+    env = TradingEnv(
         features=data,
         initial_balance=100000,
         reward_type="combined",
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     import line_profiler
     profile = line_profiler.LineProfiler()
     
-    profile.add_function(TradingEnvV2.step)
+    profile.add_function(TradingEnv.step)
     #profile.add_function(TradingEnvV2._process_trades)
     #profile.add_function(TradingEnvV2._execute_new_trade)
     #profile.add_function(TradingState.calculate_std_return)
